@@ -94,6 +94,17 @@ canvas{display:block;position:fixed;top:0;left:0}
   transition:.3s;margin-top:20px;pointer-events:all}
 #match-end .replay-btn:hover{background:#0ff;color:#000;box-shadow:0 0 25px #0ff}
 
+/* ═══ BOSS HP BAR ═══ */
+#boss-bar{position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:10;pointer-events:none;
+  width:320px;text-align:center;display:none}
+#boss-bar .boss-label{font-family:'Orbitron',sans-serif;font-size:.6em;color:#ff4400;letter-spacing:3px;
+  text-shadow:0 0 8px rgba(255,68,0,.5)}
+#boss-bar .boss-hp-track{width:100%;height:8px;background:rgba(0,0,0,.6);border:1px solid #ff440033;
+  border-radius:4px;overflow:hidden;margin-top:3px}
+#boss-bar .boss-hp-fill{height:100%;background:linear-gradient(90deg,#ff2200,#ff6600,#ff4400);
+  border-radius:3px;transition:width .3s;box-shadow:0 0 8px rgba(255,68,0,.4)}
+#boss-bar .boss-hp-text{font-size:.5em;color:#ff6600;margin-top:2px}
+
 /* Vignette */
 #vignette{position:fixed;inset:0;z-index:4;pointer-events:none;
   background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.5) 100%)}
@@ -107,7 +118,7 @@ canvas{display:block;position:fixed;top:0;left:0}
 <div id="intro">
   <div class="logo">CLAWWARSARENA</div>
   <div class="sub">⚡ BOT vs BOT COMBAT ⚡</div>
-  <div class="tagline">OpenClaw agents enter. One dominates.</div>
+  <div class="tagline">OpenClaw agents vs THE LOBSTER KING 🦞</div>
   <div class="bot-roster" id="roster"></div>
   <button class="start-btn" id="startBtn">WATCH THE FIGHT</button>
   <div class="mode-btns">
@@ -131,6 +142,11 @@ canvas{display:block;position:fixed;top:0;left:0}
   <div id="announcer"></div>
   <div id="spectating">SPECTATING: <span id="spec-name">—</span></div>
   <div id="bot-status"></div>
+  <div id="boss-bar">
+    <div class="boss-label">🦞 LOBSTER KING 🦞</div>
+    <div class="boss-hp-track"><div class="boss-hp-fill" id="boss-hp-fill" style="width:100%"></div></div>
+    <div class="boss-hp-text" id="boss-hp-text">1500 / 1500</div>
+  </div>
   <div id="controls-hint"><span>SPACE</span> Next Bot · <span>1-5</span> Focus Bot · <span>F</span> Free Cam · <span>TAB</span> Scores</div>
 </div>
 
@@ -258,6 +274,384 @@ let specIdx = 0, freeCam = false, keys = {};
 let shake = 0;
 let botConfigs = [];
 
+// ═══ LOBSTER BOSS ═══
+let boss = null;
+const BOSS_BASE_HP = 1500;
+const BOSS_RESPAWN = 25;
+const BOSS_FRAG_REWARD = 5;
+
+function initBoss() {
+  boss = {
+    x: MW * TILE / 2, y: MH * TILE / 2,
+    r: 28, angle: 0,
+    hp: BOSS_BASE_HP, maxHp: BOSS_BASE_HP,
+    alive: true, respawnT: 0, phase: 0,
+    spd: 55, moveAngle: 0,
+    clawAnim: 0, clawOpen: 1,
+    attackTimer: 0, attackMode: 'roam',
+    bubbleTimer: 0, chargeTimer: 0,
+    target: null, enraged: false,
+    timesKilled: 0, legAnim: 0,
+    flashTimer: 0
+  };
+  document.getElementById('boss-bar').style.display = 'block';
+  updateBossBar();
+}
+
+function updateBossBar() {
+  if (!boss) return;
+  const fill = document.getElementById('boss-hp-fill');
+  const text = document.getElementById('boss-hp-text');
+  const bar = document.getElementById('boss-bar');
+  if (boss.alive) {
+    bar.style.display = 'block';
+    const pct = Math.max(0, boss.hp / boss.maxHp) * 100;
+    fill.style.width = pct + '%';
+    text.textContent = `${Math.ceil(boss.hp)} / ${boss.maxHp}`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function sndBossRoar() {
+  if (!ac) return;
+  snd(40, 0.6, 'sawtooth', 0.2);
+  snd(30, 0.8, 'square', 0.15);
+  snd(60, 0.4, 'sawtooth', 0.1);
+}
+function sndBossClaw() { snd(120, 0.15, 'sawtooth', 0.12); snd(70, 0.2, 'square', 0.08); }
+function sndBossBubble() { snd(400 + Math.random() * 200, 0.08, 'sine', 0.06); }
+
+function updateBoss(dt) {
+  if (!boss) return;
+  if (!boss.alive) {
+    boss.respawnT -= dt;
+    if (boss.respawnT <= 0) {
+      boss.timesKilled++;
+      boss.alive = true;
+      boss.maxHp = BOSS_BASE_HP + boss.timesKilled * 300;
+      boss.hp = boss.maxHp;
+      boss.spd = 55 + boss.timesKilled * 8;
+      boss.x = MW * TILE / 2;
+      boss.y = MH * TILE / 2;
+      boss.enraged = false;
+      boss.flashTimer = 0;
+      announceText = '🦞 LOBSTER KING RETURNS!';
+      announceTimer = 3; announceColor = '#ff4400';
+      sndBossRoar();
+      spawnP(boss.x, boss.y, 30, '#ff4400', 200, 5, 1);
+      updateBossBar();
+    }
+    return;
+  }
+
+  boss.legAnim += dt * 5;
+  boss.enraged = boss.hp < boss.maxHp * 0.3;
+  const spdMult = boss.enraged ? 1.5 : 1;
+
+  // Find nearest bot
+  let nearBot = null, nearDist = Infinity;
+  bots.forEach(b => {
+    if (!b.alive) return;
+    const d = Math.hypot(b.x - boss.x, b.y - boss.y);
+    if (d < nearDist) { nearDist = d; nearBot = b; }
+  });
+  boss.target = nearBot;
+
+  // Movement — move toward nearest bot
+  if (nearBot) {
+    const toBot = Math.atan2(nearBot.y - boss.y, nearBot.x - boss.x);
+    // Smooth angle turning
+    let diff = toBot - boss.angle;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    boss.angle += diff * 2.5 * dt;
+    boss.moveAngle = boss.angle;
+
+    // Move toward target
+    if (nearDist > 50) {
+      const mx = Math.cos(boss.moveAngle) * boss.spd * spdMult;
+      const my = Math.sin(boss.moveAngle) * boss.spd * spdMult;
+      const nx = boss.x + mx * dt, ny = boss.y + my * dt;
+      if (!circWall(nx, boss.y, boss.r)) boss.x = nx;
+      if (!circWall(boss.x, ny, boss.r)) boss.y = ny;
+    }
+
+    // === ATTACKS ===
+    boss.attackTimer -= dt;
+    boss.bubbleTimer -= dt;
+
+    // Claw snap — close range
+    if (nearDist < 55 && boss.attackTimer <= 0) {
+      boss.clawAnim = 1;
+      boss.attackTimer = boss.enraged ? 0.6 : 1.2;
+      sndBossClaw();
+      // Damage all bots in claw range
+      bots.forEach(b => {
+        if (!b.alive) return;
+        const d = Math.hypot(b.x - boss.x, b.y - boss.y);
+        if (d < 65) {
+          const clawDmg = 40 + boss.timesKilled * 8;
+          hurtBot(b, clawDmg, null);
+          spawnP(b.x, b.y, 8, '#ff4400', 120, 3, 0.3);
+          // Knockback
+          const ka = Math.atan2(b.y - boss.y, b.x - boss.x);
+          b.x += Math.cos(ka) * 30;
+          b.y += Math.sin(ka) * 30;
+        }
+      });
+      spawnP(boss.x + Math.cos(boss.angle) * 30, boss.y + Math.sin(boss.angle) * 30,
+        6, '#ff6600', 80, 2, 0.2);
+    }
+
+    // Bubble barrage — ranged
+    if (boss.bubbleTimer <= 0 && nearDist > 80) {
+      boss.bubbleTimer = boss.enraged ? 0.3 : 0.7;
+      const spread = boss.enraged ? 0.4 : 0.2;
+      const bAngle = boss.angle + (Math.random() - 0.5) * spread;
+      const bSpd = 220 + Math.random() * 80;
+      projs.push({
+        x: boss.x + Math.cos(boss.angle) * 20,
+        y: boss.y + Math.sin(boss.angle) * 20,
+        vx: Math.cos(bAngle) * bSpd, vy: Math.sin(bAngle) * bSpd,
+        dmg: 18 + boss.timesKilled * 4, size: 5, color: '#ff8844',
+        life: 1.8, owner: null, splash: 50, splashDmg: 12 + boss.timesKilled * 2,
+        isRocket: false, isBossBubble: true
+      });
+      sndBossBubble();
+    }
+  }
+
+  // Claw animation decay
+  if (boss.clawAnim > 0) {
+    boss.clawAnim -= dt * 4;
+    if (boss.clawAnim < 0) boss.clawAnim = 0;
+  }
+  boss.clawOpen = 1 - boss.clawAnim * 0.7;
+
+  // Flash on hit
+  if (boss.flashTimer > 0) boss.flashTimer -= dt;
+
+  updateBossBar();
+}
+
+function hurtBoss(dmg, attacker) {
+  if (!boss || !boss.alive) return;
+  boss.hp -= dmg;
+  boss.flashTimer = 0.08;
+  shake = Math.max(shake, 0.1);
+  if (boss.hp <= 0) {
+    boss.hp = 0; boss.alive = false;
+    boss.respawnT = BOSS_RESPAWN;
+    if (attacker) {
+      attacker.frags += BOSS_FRAG_REWARD;
+      announceText = `${attacker.name} SLAYS THE LOBSTER! (+${BOSS_FRAG_REWARD})`;
+      announceTimer = 3.5; announceColor = '#ff8800';
+      addKill(attacker.name, '🦞 LOBSTER', attacker.color);
+    } else {
+      announceText = 'THE LOBSTER KING FALLS!';
+      announceTimer = 3; announceColor = '#ff4400';
+    }
+    sndBossRoar();
+    shake = 1;
+    // Massive death explosion
+    spawnP(boss.x, boss.y, 40, '#ff4400', 300, 6, 1.2);
+    spawnP(boss.x, boss.y, 25, '#ff8800', 250, 5, 1);
+    spawnP(boss.x, boss.y, 15, '#ffcc00', 200, 4, 0.8);
+    spawnP(boss.x, boss.y, 30, '#ff0000', 280, 3, 1);
+    beams.push({ x1: boss.x, y1: boss.y, x2: boss.x, y2: boss.y, color: '#ff6600', width: 150, life: 0.3, maxLife: 0.3, isFlash: true });
+    // Gibs — lobster shell pieces
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 100 + Math.random() * 200;
+      parts.push({ x: boss.x, y: boss.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        color: i % 2 === 0 ? '#cc2200' : '#ff4400', size: 5 + Math.random() * 6,
+        life: 2, maxLife: 2, grav: 120, bounce: true });
+    }
+    updateLeaderboard();
+    updateBossBar();
+  }
+}
+
+function drawBoss() {
+  if (!boss || !boss.alive) return;
+  const sx = boss.x - cam.x, sy = boss.y - cam.y;
+  if (sx < -80 || sx > W + 80 || sy < -80 || sy > H + 80) return;
+
+  const t = performance.now() * 0.001;
+  const R = boss.r;
+  const a = boss.angle;
+  const flash = boss.flashTimer > 0;
+  const enr = boss.enraged;
+
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(a);
+
+  // === BOSS AURA ===
+  const auraR = R * 3;
+  const ag = ctx.createRadialGradient(0, 0, R * 0.5, 0, 0, auraR);
+  const auraAlpha = enr ? 0.18 + Math.sin(t * 8) * 0.06 : 0.08;
+  ag.addColorStop(0, `rgba(255,68,0,${auraAlpha})`);
+  ag.addColorStop(1, 'rgba(255,68,0,0)');
+  ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(0, 0, auraR, 0, Math.PI * 2); ctx.fill();
+
+  // === SHADOW ===
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.ellipse(0, 4, R + 3, R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+
+  // === TAIL (behind body) ===
+  const tailSegs = 5;
+  ctx.strokeStyle = flash ? '#ffffff' : '#aa2200';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(-R * 0.8, 0);
+  for (let i = 1; i <= tailSegs; i++) {
+    const tx = -R * 0.8 - i * 7;
+    const ty = Math.sin(t * 4 + i * 0.8) * 4 * (i / tailSegs);
+    ctx.lineTo(tx, ty);
+  }
+  ctx.stroke();
+  // Tail fan
+  const tailEndX = -R * 0.8 - tailSegs * 7;
+  const tailEndY = Math.sin(t * 4 + tailSegs * 0.8) * 4;
+  ctx.fillStyle = flash ? '#ffffff' : '#cc3300';
+  ctx.beginPath();
+  ctx.moveTo(tailEndX, tailEndY - 8);
+  ctx.lineTo(tailEndX - 10, tailEndY);
+  ctx.lineTo(tailEndX, tailEndY + 8);
+  ctx.closePath(); ctx.fill();
+
+  // === LEGS (4 per side) ===
+  ctx.strokeStyle = flash ? '#ffffff' : '#993300';
+  ctx.lineWidth = 2;
+  for (let side = -1; side <= 1; side += 2) {
+    for (let i = 0; i < 4; i++) {
+      const lx = -R * 0.3 + i * R * 0.3;
+      const ly = side * R * 0.5;
+      const legPhase = boss.legAnim + i * 0.8 + (side > 0 ? Math.PI : 0);
+      const legEndX = lx + Math.sin(legPhase) * 4;
+      const legEndY = ly + side * 10 + Math.cos(legPhase) * 3;
+      ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(legEndX, legEndY); ctx.stroke();
+    }
+  }
+
+  // === BODY (main carapace) ===
+  const bodyColor = flash ? '#ffffff' : enr ? '#ee2200' : '#cc3300';
+  ctx.fillStyle = bodyColor;
+  ctx.shadowColor = '#ff4400'; ctx.shadowBlur = enr ? 18 : 10;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, R, R * 0.65, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Body detail — carapace line
+  ctx.strokeStyle = flash ? '#ffcccc' : '#992200';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, R * 0.6, R * 0.4, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  // Center ridge
+  ctx.beginPath(); ctx.moveTo(-R * 0.5, 0); ctx.lineTo(R * 0.3, 0); ctx.stroke();
+
+  // === ANTENNAE ===
+  ctx.strokeStyle = flash ? '#ffffff' : '#ff6644';
+  ctx.lineWidth = 1.5;
+  for (let side = -1; side <= 1; side += 2) {
+    ctx.beginPath();
+    ctx.moveTo(R * 0.7, side * R * 0.2);
+    const antX = R * 1.4 + Math.sin(t * 3 + side) * 4;
+    const antY = side * R * 0.6 + Math.cos(t * 2.5 + side * 2) * 3;
+    ctx.quadraticCurveTo(R * 1.1, side * R * 0.5, antX, antY);
+    ctx.stroke();
+    // Antenna tip
+    ctx.fillStyle = '#ff8866';
+    ctx.beginPath(); ctx.arc(antX, antY, 1.5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // === CLAWS ===
+  const clawOpen = boss.clawOpen;
+  for (let side = -1; side <= 1; side += 2) {
+    const clawBaseX = R * 0.6;
+    const clawBaseY = side * R * 0.55;
+    // Arm
+    const armEndX = R * 1.2;
+    const armEndY = side * R * 0.7;
+    ctx.strokeStyle = flash ? '#ffffff' : '#dd3300';
+    ctx.lineWidth = 5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(clawBaseX, clawBaseY); ctx.lineTo(armEndX, armEndY); ctx.stroke();
+
+    // Claw pincers
+    const pincerLen = 14;
+    const openAngle = 0.35 * clawOpen;
+    ctx.lineWidth = 3.5;
+    ctx.fillStyle = flash ? '#ffffff' : enr ? '#ff2200' : '#ee4400';
+    ctx.strokeStyle = flash ? '#ffffff' : '#ff6644';
+    // Upper pincer
+    ctx.beginPath();
+    ctx.moveTo(armEndX, armEndY);
+    const up1x = armEndX + Math.cos(-openAngle) * pincerLen;
+    const up1y = armEndY + side * Math.sin(openAngle) * pincerLen * 0.3 - (side > 0 ? 0 : 0);
+    ctx.lineTo(armEndX + pincerLen * 0.8, armEndY - side * pincerLen * 0.15 * clawOpen);
+    ctx.stroke();
+    // Lower pincer
+    ctx.beginPath();
+    ctx.moveTo(armEndX, armEndY);
+    ctx.lineTo(armEndX + pincerLen * 0.8, armEndY + side * pincerLen * 0.15 * clawOpen);
+    ctx.stroke();
+    // Pincer fill
+    ctx.fillStyle = flash ? '#ffcccc' : '#cc3300';
+    ctx.beginPath();
+    ctx.moveTo(armEndX, armEndY);
+    ctx.lineTo(armEndX + pincerLen * 0.8, armEndY - side * pincerLen * 0.15 * clawOpen);
+    ctx.lineTo(armEndX + pincerLen, armEndY);
+    ctx.lineTo(armEndX + pincerLen * 0.8, armEndY + side * pincerLen * 0.15 * clawOpen);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // === EYES ===
+  const eyeGlow = enr ? '#ff0000' : '#ffcc00';
+  for (let side = -1; side <= 1; side += 2) {
+    const ex = R * 0.55, ey = side * R * 0.22;
+    // Eye stalk
+    ctx.strokeStyle = flash ? '#ffffff' : '#cc3300';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(ex - 3, ey); ctx.lineTo(ex + 4, ey + side * 2); ctx.stroke();
+    // Eye
+    ctx.fillStyle = flash ? '#ffffff' : eyeGlow;
+    ctx.shadowColor = eyeGlow; ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.arc(ex + 4, ey + side * 2, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(ex + 5, ey + side * 2, 1.2, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.restore();
+
+  // === NAME + HP BAR (above boss) ===
+  ctx.font = 'bold 10px Orbitron, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = enr ? '#ff2200' : '#ff6600';
+  ctx.shadowColor = '#ff4400'; ctx.shadowBlur = 5;
+  const label = enr ? '🦞 LOBSTER KING — ENRAGED! 🦞' : '🦞 LOBSTER KING 🦞';
+  ctx.fillText(label, sx, sy - R - 16);
+  ctx.shadowBlur = 0;
+
+  // Mini HP bar above boss
+  const bw = 50;
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(sx - bw / 2, sy - R - 10, bw, 4);
+  const hpP = boss.hp / boss.maxHp;
+  ctx.fillStyle = hpP > 0.3 ? '#ff6600' : '#ff0000';
+  ctx.fillRect(sx - bw / 2, sy - R - 10, bw * hpP, 4);
+
+  // Enrage aura pulsing particles
+  if (enr && Math.random() < 0.3) {
+    const pa = Math.random() * Math.PI * 2;
+    parts.push({ x: boss.x + Math.cos(pa) * R, y: boss.y + Math.sin(pa) * R,
+      vx: Math.cos(pa) * 40, vy: Math.sin(pa) * 40,
+      color: '#ff2200', size: 2 + Math.random() * 2, life: 0.4, maxLife: 0.4, grav: 0, bounce: false });
+  }
+}
+
 // ═══ DEFAULT BOT CONFIGS ═══
 const DEFAULT_BOTS = [
   { name: 'Skippy', title: 'The Rocket Maniac', color: '#ff4444', accentColor: '#ff8866', shape: 'circle', eyeStyle: 'angry', trailEffect: 'fire', taunts: ['EAT ROCKETS!', 'BOOM BABY!', 'TOO SLOW!', 'GET REKT!'], strategy: { preferredWeapon: 'rocket', aggression: 0.95, accuracy: 0.4, speed: 1.1, retreatThreshold: 0.15, combatStyle: 'rusher', dodgePattern: 'aggressive', pickupPriority: 'weapon' } },
@@ -359,7 +753,7 @@ function shoot(bot) {
 
   if (w.hitscan) {
     const range = w.beamLen;
-    let hitBot = null, hitDist = range;
+    let hitBot = null, hitDist = range, hitBoss = false;
     bots.forEach(t => {
       if (t === bot || !t.alive) return;
       const dx = t.x - bot.x, dy = t.y - bot.y;
@@ -368,6 +762,15 @@ function shoot(bot) {
       const px = bot.x + Math.cos(bot.angle) * dot, py = bot.y + Math.sin(bot.angle) * dot;
       if (Math.hypot(px - t.x, py - t.y) < t.r + 6) { hitBot = t; hitDist = dot; }
     });
+    // Check boss hit
+    if (boss && boss.alive) {
+      const bdx = boss.x - bot.x, bdy = boss.y - bot.y;
+      const bdot = bdx * Math.cos(bot.angle) + bdy * Math.sin(bot.angle);
+      if (bdot > 0 && bdot < hitDist) {
+        const bpx = bot.x + Math.cos(bot.angle) * bdot, bpy = bot.y + Math.sin(bot.angle) * bdot;
+        if (Math.hypot(bpx - boss.x, bpy - boss.y) < boss.r + 8) { hitBot = null; hitBoss = true; hitDist = bdot; }
+      }
+    }
     const endX = bot.x + Math.cos(bot.angle) * hitDist;
     const endY = bot.y + Math.sin(bot.angle) * hitDist;
     beams.push({
@@ -379,6 +782,10 @@ function shoot(bot) {
     if (hitBot) {
       hurtBot(hitBot, w.dmg * dmgMult, bot);
       spawnP(hitBot.x, hitBot.y, 6, '#ff0000', 100, 2, 0.25);
+      sndHit();
+    } else if (hitBoss) {
+      hurtBoss(w.dmg * dmgMult, bot);
+      spawnP(boss.x, boss.y, 6, '#ff4400', 100, 2, 0.25);
       sndHit();
     }
     sndShoot[bot.wpn]();
@@ -447,6 +854,14 @@ function explosion(x, y, radius, dmg, owner) {
       if (t !== owner || actualDmg > 5) hurtBot(t, actualDmg, owner);
     }
   });
+  // Boss splash damage
+  if (boss && boss.alive) {
+    const bd = Math.hypot(boss.x - x, boss.y - y);
+    if (bd < radius) {
+      const fall = 1 - bd / radius;
+      hurtBoss(dmg * fall, owner);
+    }
+  }
 }
 
 let streaks = {};
@@ -507,13 +922,22 @@ function updateBot(b, dt) {
   if (b.invulnT > 0) b.invulnT -= dt;
   if (b.quadT > 0) b.quadT -= dt;
 
-  // Find target
+  // Find target — consider boss too
   let tgt = null, tgtDist = Infinity;
   bots.forEach(o => {
     if (o === b || !o.alive) return;
     const d = Math.hypot(o.x - b.x, o.y - b.y);
     if (d < tgtDist) { tgtDist = d; tgt = o; }
   });
+  // Target boss if it's closer or bot is aggressive
+  if (boss && boss.alive) {
+    const bossDist = Math.hypot(boss.x - b.x, boss.y - b.y);
+    // Prioritize boss if closer, or randomly 40% of the time
+    if (bossDist < tgtDist * 0.8 || (bossDist < 400 && Math.random() < 0.4)) {
+      tgt = { x: boss.x, y: boss.y, alive: true, r: boss.r };
+      tgtDist = bossDist;
+    }
+  }
   if (!tgt) return;
 
   const dx = tgt.x - b.x, dy = tgt.y - b.y;
@@ -867,8 +1291,9 @@ function loop(t) {
 
   gameTime += dt;
 
-  // Update bots
+  // Update bots + boss
   bots.forEach(b => updateBot(b, dt));
+  updateBoss(dt);
 
   // Projectiles
   for (let i = projs.length - 1; i >= 0; i--) {
@@ -893,6 +1318,14 @@ function loop(t) {
           else { hurtBot(t, p.dmg, p.owner); spawnP(t.x, t.y, 5, '#ff0000', 80, 2, 0.2); sndHit(); }
           break;
         }
+      }
+    }
+    // Projectile vs boss (don't let boss projectiles hit itself)
+    if (!hit && boss && boss.alive && !p.isBossBubble) {
+      if (Math.hypot(boss.x - p.x, boss.y - p.y) < boss.r + p.size) {
+        hit = true;
+        if (p.splash) explosion(p.x, p.y, p.splash, p.splashDmg, p.owner);
+        else { hurtBoss(p.dmg, p.owner); spawnP(boss.x, boss.y, 5, '#ff4400', 80, 2, 0.2); sndHit(); }
       }
     }
     if (hit || p.life <= 0) projs.splice(i, 1);
@@ -932,6 +1365,8 @@ function loop(t) {
   projs.forEach(p => drawProj(p));
   // Sort bots by y for depth
   [...bots].sort((a, b) => a.y - b.y).forEach(b => drawBot(b));
+  // Draw boss on top
+  drawBoss();
 
   // HUD updates
   const tm = Math.floor(gameTime / 60), ts = Math.floor(gameTime % 60);
@@ -982,9 +1417,10 @@ function initGame() {
   genMap();
   initPickups();
   initBots(botConfigs);
+  initBoss();
   projs = []; parts = []; beams = []; killFeedList = [];
   streaks = {};
-  announceText = ''; announceTimer = 0;
+  announceText = '🦞 THE LOBSTER KING AWAKENS!'; announceTimer = 3; announceColor = '#ff4400';
   gameTime = 0;
   shake = 0;
   specIdx = 0;
@@ -993,6 +1429,7 @@ function initGame() {
   updateLeaderboard();
   updateBotStatus();
   document.getElementById('match-info').textContent = `DEATHMATCH · ${fragLimit} FRAGS`;
+  sndBossRoar();
 }
 
 // ═══ START ═══
