@@ -280,19 +280,31 @@ const BOSS_BASE_HP = 1500;
 const BOSS_RESPAWN = 25;
 const BOSS_FRAG_REWARD = 5;
 
+function findOpenSpot(rad) {
+  // Find a spot not inside walls
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const x = (4 + Math.random() * (MW - 8)) * TILE;
+    const y = (4 + Math.random() * (MH - 8)) * TILE;
+    if (!circWall(x, y, rad)) return { x, y };
+  }
+  return { x: 8 * TILE, y: 8 * TILE };
+}
+
 function initBoss() {
+  const spot = findOpenSpot(50);
   boss = {
-    x: MW * TILE / 2, y: MH * TILE / 2,
-    r: 28, angle: 0,
+    x: spot.x, y: spot.y,
+    r: 50, angle: 0,
     hp: BOSS_BASE_HP, maxHp: BOSS_BASE_HP,
     alive: true, respawnT: 0, phase: 0,
-    spd: 55, moveAngle: 0,
+    spd: 80, moveAngle: 0,
     clawAnim: 0, clawOpen: 1,
-    attackTimer: 0, attackMode: 'roam',
-    bubbleTimer: 0, chargeTimer: 0,
+    attackTimer: 0, attackMode: 'hunt',
+    bubbleTimer: 0, chargeTimer: 0, chargeVx: 0, chargeVy: 0, charging: false, chargeCooldown: 0,
+    tailWhipTimer: 0, tailWhipAnim: 0,
     target: null, enraged: false,
     timesKilled: 0, legAnim: 0,
-    flashTimer: 0
+    flashTimer: 0, roarTimer: 8
   };
   document.getElementById('boss-bar').style.display = 'block';
   updateBossBar();
@@ -329,14 +341,15 @@ function updateBoss(dt) {
     if (boss.respawnT <= 0) {
       boss.timesKilled++;
       boss.alive = true;
-      boss.maxHp = BOSS_BASE_HP + boss.timesKilled * 300;
+      boss.maxHp = BOSS_BASE_HP + boss.timesKilled * 400;
       boss.hp = boss.maxHp;
-      boss.spd = 55 + boss.timesKilled * 8;
-      boss.x = MW * TILE / 2;
-      boss.y = MH * TILE / 2;
+      boss.spd = 80 + boss.timesKilled * 10;
+      const spot = findOpenSpot(boss.r);
+      boss.x = spot.x; boss.y = spot.y;
       boss.enraged = false;
       boss.flashTimer = 0;
-      announceText = '🦞 LOBSTER KING RETURNS!';
+      boss.charging = false;
+      announceText = '🦞 LOBSTER KING RETURNS — STRONGER!';
       announceTimer = 3; announceColor = '#ff4400';
       sndBossRoar();
       spawnP(boss.x, boss.y, 30, '#ff4400', 200, 5, 1);
@@ -345,92 +358,201 @@ function updateBoss(dt) {
     return;
   }
 
-  boss.legAnim += dt * 5;
-  boss.enraged = boss.hp < boss.maxHp * 0.3;
-  const spdMult = boss.enraged ? 1.5 : 1;
+  boss.legAnim += dt * 6;
+  boss.enraged = boss.hp < boss.maxHp * 0.35;
+  const spdMult = boss.enraged ? 1.6 : 1;
+  const turnRate = boss.enraged ? 4 : 2.8;
 
-  // Find nearest bot
+  // Periodic roar
+  boss.roarTimer -= dt;
+  if (boss.roarTimer <= 0) {
+    boss.roarTimer = 6 + Math.random() * 6;
+    sndBossRoar();
+    shake = Math.max(shake, 0.15);
+  }
+
+  // Find nearest bot as primary target, also track all alive bots
   let nearBot = null, nearDist = Infinity;
+  let aliveBots = [];
   bots.forEach(b => {
     if (!b.alive) return;
+    aliveBots.push(b);
     const d = Math.hypot(b.x - boss.x, b.y - boss.y);
     if (d < nearDist) { nearDist = d; nearBot = b; }
   });
   boss.target = nearBot;
 
-  // Movement — move toward nearest bot
+  // === CHARGE ATTACK ===
+  boss.chargeCooldown -= dt;
+  if (boss.charging) {
+    // Move fast in charge direction
+    const cspd = boss.spd * 3.5;
+    const nx = boss.x + boss.chargeVx * cspd * dt;
+    const ny = boss.y + boss.chargeVy * cspd * dt;
+    if (!circWall(nx, boss.y, boss.r * 0.7)) boss.x = nx;
+    else { boss.charging = false; shake = 0.4; sndBossClaw(); spawnP(boss.x, boss.y, 12, '#ff4400', 120, 3, 0.3); }
+    if (!circWall(boss.x, ny, boss.r * 0.7)) boss.y = ny;
+    else { boss.charging = false; shake = 0.4; sndBossClaw(); spawnP(boss.x, boss.y, 12, '#ff4400', 120, 3, 0.3); }
+    // Trail particles during charge
+    spawnP(boss.x - boss.chargeVx * 20, boss.y - boss.chargeVy * 20, 3, '#ff2200', 80, 4, 0.3);
+    // Hit bots during charge
+    bots.forEach(b => {
+      if (!b.alive) return;
+      if (Math.hypot(b.x - boss.x, b.y - boss.y) < boss.r + b.r + 15) {
+        const chargeDmg = 65 + boss.timesKilled * 12;
+        hurtBot(b, chargeDmg, null);
+        spawnP(b.x, b.y, 12, '#ff4400', 180, 4, 0.4);
+        const ka = Math.atan2(b.y - boss.y, b.x - boss.x);
+        b.x += Math.cos(ka) * 60; b.y += Math.sin(ka) * 60;
+        sndBossClaw();
+        boss.charging = false;
+      }
+    });
+    boss.attackTimer -= dt;
+    if (boss.attackTimer <= 0) boss.charging = false;
+    // Claw/flash timers still tick
+    if (boss.clawAnim > 0) { boss.clawAnim -= dt * 4; if (boss.clawAnim < 0) boss.clawAnim = 0; }
+    boss.clawOpen = 1 - boss.clawAnim * 0.7;
+    if (boss.flashTimer > 0) boss.flashTimer -= dt;
+    updateBossBar();
+    return;
+  }
+
+  // === MOVEMENT — actively hunt nearest bot ===
   if (nearBot) {
     const toBot = Math.atan2(nearBot.y - boss.y, nearBot.x - boss.x);
-    // Smooth angle turning
+    // Smooth turning
     let diff = toBot - boss.angle;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
-    boss.angle += diff * 2.5 * dt;
-    boss.moveAngle = boss.angle;
+    boss.angle += diff * turnRate * dt;
 
-    // Move toward target
-    if (nearDist > 50) {
-      const mx = Math.cos(boss.moveAngle) * boss.spd * spdMult;
-      const my = Math.sin(boss.moveAngle) * boss.spd * spdMult;
-      const nx = boss.x + mx * dt, ny = boss.y + my * dt;
-      if (!circWall(nx, boss.y, boss.r)) boss.x = nx;
-      if (!circWall(boss.x, ny, boss.r)) boss.y = ny;
+    // Always move toward target aggressively
+    const moveSpeed = boss.spd * spdMult;
+    const mx = Math.cos(boss.angle) * moveSpeed;
+    const my = Math.sin(boss.angle) * moveSpeed;
+    const nx = boss.x + mx * dt, ny = boss.y + my * dt;
+    // Use smaller collision radius so boss can fit through corridors
+    if (!circWall(nx, boss.y, boss.r * 0.6)) boss.x = nx;
+    else {
+      // Try to slide along walls
+      if (!circWall(nx, boss.y, boss.r * 0.4)) boss.x = nx;
+    }
+    if (!circWall(boss.x, ny, boss.r * 0.6)) boss.y = ny;
+    else {
+      if (!circWall(boss.x, ny, boss.r * 0.4)) boss.y = ny;
     }
 
-    // === ATTACKS ===
-    boss.attackTimer -= dt;
-    boss.bubbleTimer -= dt;
+    // Keep in bounds
+    boss.x = Math.max(boss.r + TILE, Math.min(MW * TILE - boss.r - TILE, boss.x));
+    boss.y = Math.max(boss.r + TILE, Math.min(MH * TILE - boss.r - TILE, boss.y));
 
-    // Claw snap — close range
-    if (nearDist < 55 && boss.attackTimer <= 0) {
+    // === CLAW SNAP — close range AoE ===
+    boss.attackTimer -= dt;
+    if (nearDist < boss.r + 35 && boss.attackTimer <= 0) {
       boss.clawAnim = 1;
-      boss.attackTimer = boss.enraged ? 0.6 : 1.2;
+      boss.attackTimer = boss.enraged ? 0.5 : 0.9;
       sndBossClaw();
-      // Damage all bots in claw range
+      shake = Math.max(shake, 0.2);
       bots.forEach(b => {
         if (!b.alive) return;
         const d = Math.hypot(b.x - boss.x, b.y - boss.y);
-        if (d < 65) {
-          const clawDmg = 40 + boss.timesKilled * 8;
+        if (d < boss.r + 45) {
+          const clawDmg = 50 + boss.timesKilled * 10;
           hurtBot(b, clawDmg, null);
-          spawnP(b.x, b.y, 8, '#ff4400', 120, 3, 0.3);
-          // Knockback
+          spawnP(b.x, b.y, 10, '#ff4400', 150, 3, 0.35);
+          addKill('🦞 Lobster', b.name, '#ff4400');
           const ka = Math.atan2(b.y - boss.y, b.x - boss.x);
-          b.x += Math.cos(ka) * 30;
-          b.y += Math.sin(ka) * 30;
+          b.x += Math.cos(ka) * 45; b.y += Math.sin(ka) * 45;
         }
       });
-      spawnP(boss.x + Math.cos(boss.angle) * 30, boss.y + Math.sin(boss.angle) * 30,
-        6, '#ff6600', 80, 2, 0.2);
+      spawnP(boss.x + Math.cos(boss.angle) * boss.r, boss.y + Math.sin(boss.angle) * boss.r,
+        8, '#ff6600', 100, 3, 0.25);
     }
 
-    // Bubble barrage — ranged
-    if (boss.bubbleTimer <= 0 && nearDist > 80) {
-      boss.bubbleTimer = boss.enraged ? 0.3 : 0.7;
-      const spread = boss.enraged ? 0.4 : 0.2;
-      const bAngle = boss.angle + (Math.random() - 0.5) * spread;
-      const bSpd = 220 + Math.random() * 80;
-      projs.push({
-        x: boss.x + Math.cos(boss.angle) * 20,
-        y: boss.y + Math.sin(boss.angle) * 20,
-        vx: Math.cos(bAngle) * bSpd, vy: Math.sin(bAngle) * bSpd,
-        dmg: 18 + boss.timesKilled * 4, size: 5, color: '#ff8844',
-        life: 1.8, owner: null, splash: 50, splashDmg: 12 + boss.timesKilled * 2,
-        isRocket: false, isBossBubble: true
+    // === TAIL WHIP — hits bots behind the boss ===
+    boss.tailWhipTimer -= dt;
+    if (boss.tailWhipTimer <= 0 && aliveBots.length > 0) {
+      boss.tailWhipTimer = boss.enraged ? 2 : 3.5;
+      boss.tailWhipAnim = 1;
+      sndBossClaw();
+      const behindAngle = boss.angle + Math.PI;
+      bots.forEach(b => {
+        if (!b.alive) return;
+        const d = Math.hypot(b.x - boss.x, b.y - boss.y);
+        const bAngle = Math.atan2(b.y - boss.y, b.x - boss.x);
+        let angleDiff = bAngle - behindAngle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        if (d < boss.r + 80 && Math.abs(angleDiff) < 1.2) {
+          const tailDmg = 35 + boss.timesKilled * 6;
+          hurtBot(b, tailDmg, null);
+          spawnP(b.x, b.y, 8, '#cc2200', 120, 3, 0.3);
+          const ka = Math.atan2(b.y - boss.y, b.x - boss.x);
+          b.x += Math.cos(ka) * 55; b.y += Math.sin(ka) * 55;
+        }
       });
+      // Tail whip visual arc
+      for (let i = 0; i < 8; i++) {
+        const a = behindAngle + (Math.random() - 0.5) * 2;
+        const d = boss.r + 20 + Math.random() * 50;
+        spawnP(boss.x + Math.cos(a) * d, boss.y + Math.sin(a) * d, 2, '#ff4400', 60, 2, 0.3);
+      }
+    }
+    if (boss.tailWhipAnim > 0) boss.tailWhipAnim -= dt * 3;
+
+    // === BUBBLE BARRAGE — ranged ===
+    boss.bubbleTimer -= dt;
+    if (boss.bubbleTimer <= 0 && nearDist > boss.r + 30) {
+      boss.bubbleTimer = boss.enraged ? 0.2 : 0.5;
+      const spread = boss.enraged ? 0.5 : 0.25;
+      const numBubbles = boss.enraged ? 3 : 1;
+      for (let i = 0; i < numBubbles; i++) {
+        const bAngle = boss.angle + (Math.random() - 0.5) * spread;
+        const bSpd = 250 + Math.random() * 100;
+        projs.push({
+          x: boss.x + Math.cos(boss.angle) * (boss.r + 5),
+          y: boss.y + Math.sin(boss.angle) * (boss.r + 5),
+          vx: Math.cos(bAngle) * bSpd, vy: Math.sin(bAngle) * bSpd,
+          dmg: 20 + boss.timesKilled * 5, size: 6, color: '#ff8844',
+          life: 2, owner: null, splash: 55, splashDmg: 15 + boss.timesKilled * 3,
+          isRocket: false, isBossBubble: true
+        });
+      }
       sndBossBubble();
+      spawnP(boss.x + Math.cos(boss.angle) * boss.r, boss.y + Math.sin(boss.angle) * boss.r,
+        4, '#ff8844', 60, 3, 0.15);
+    }
+
+    // === CHARGE ATTACK — rush at distant bots ===
+    if (nearDist > 200 && boss.chargeCooldown <= 0 && Math.random() < 0.008) {
+      boss.charging = true;
+      boss.chargeVx = Math.cos(boss.angle);
+      boss.chargeVy = Math.sin(boss.angle);
+      boss.attackTimer = 0.8;
+      boss.chargeCooldown = boss.enraged ? 4 : 7;
+      sndBossRoar();
+      shake = 0.3;
+      announceText = '🦞 LOBSTER CHARGES!';
+      announceTimer = 1.5; announceColor = '#ff2200';
     }
   }
 
   // Claw animation decay
-  if (boss.clawAnim > 0) {
-    boss.clawAnim -= dt * 4;
-    if (boss.clawAnim < 0) boss.clawAnim = 0;
-  }
+  if (boss.clawAnim > 0) { boss.clawAnim -= dt * 4; if (boss.clawAnim < 0) boss.clawAnim = 0; }
   boss.clawOpen = 1 - boss.clawAnim * 0.7;
 
   // Flash on hit
   if (boss.flashTimer > 0) boss.flashTimer -= dt;
+
+  // Ambient threat particles
+  if (Math.random() < 0.15) {
+    const pa = Math.random() * Math.PI * 2;
+    parts.push({ x: boss.x + Math.cos(pa) * boss.r * 0.8, y: boss.y + Math.sin(pa) * boss.r * 0.8,
+      vx: Math.cos(pa) * 20, vy: Math.sin(pa) * 20,
+      color: boss.enraged ? '#ff0000' : '#ff4400', size: 1.5 + Math.random() * 1.5,
+      life: 0.35, maxLife: 0.35, grav: 0, bounce: false });
+  }
 
   updateBossBar();
 }
@@ -475,181 +597,276 @@ function hurtBoss(dmg, attacker) {
 function drawBoss() {
   if (!boss || !boss.alive) return;
   const sx = boss.x - cam.x, sy = boss.y - cam.y;
-  if (sx < -80 || sx > W + 80 || sy < -80 || sy > H + 80) return;
+  if (sx < -150 || sx > W + 150 || sy < -150 || sy > H + 150) return;
 
   const t = performance.now() * 0.001;
   const R = boss.r;
-  const a = boss.angle;
   const flash = boss.flashTimer > 0;
   const enr = boss.enraged;
+  const charging = boss.charging;
 
   ctx.save();
   ctx.translate(sx, sy);
-  ctx.rotate(a);
+  ctx.rotate(boss.angle);
+
+  // === DANGER ZONE (ground circle) ===
+  if (enr) {
+    ctx.globalAlpha = 0.06 + Math.sin(t * 6) * 0.03;
+    ctx.fillStyle = '#ff0000';
+    ctx.beginPath(); ctx.arc(0, 0, R * 3, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
 
   // === BOSS AURA ===
-  const auraR = R * 3;
-  const ag = ctx.createRadialGradient(0, 0, R * 0.5, 0, 0, auraR);
-  const auraAlpha = enr ? 0.18 + Math.sin(t * 8) * 0.06 : 0.08;
+  const auraR = R * (enr ? 4 : 3);
+  const ag = ctx.createRadialGradient(0, 0, R * 0.3, 0, 0, auraR);
+  const auraAlpha = enr ? 0.22 + Math.sin(t * 8) * 0.08 : 0.1;
   ag.addColorStop(0, `rgba(255,68,0,${auraAlpha})`);
-  ag.addColorStop(1, 'rgba(255,68,0,0)');
+  ag.addColorStop(0.5, `rgba(255,30,0,${auraAlpha * 0.4})`);
+  ag.addColorStop(1, 'rgba(255,0,0,0)');
   ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(0, 0, auraR, 0, Math.PI * 2); ctx.fill();
 
-  // === SHADOW ===
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.beginPath(); ctx.ellipse(0, 4, R + 3, R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-
-  // === TAIL (behind body) ===
-  const tailSegs = 5;
-  ctx.strokeStyle = flash ? '#ffffff' : '#aa2200';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(-R * 0.8, 0);
-  for (let i = 1; i <= tailSegs; i++) {
-    const tx = -R * 0.8 - i * 7;
-    const ty = Math.sin(t * 4 + i * 0.8) * 4 * (i / tailSegs);
-    ctx.lineTo(tx, ty);
+  // Charge glow
+  if (charging) {
+    const cg = ctx.createRadialGradient(0, 0, R, 0, 0, R * 2.5);
+    cg.addColorStop(0, 'rgba(255,100,0,0.3)'); cg.addColorStop(1, 'rgba(255,0,0,0)');
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(0, 0, R * 2.5, 0, Math.PI * 2); ctx.fill();
   }
-  ctx.stroke();
-  // Tail fan
-  const tailEndX = -R * 0.8 - tailSegs * 7;
-  const tailEndY = Math.sin(t * 4 + tailSegs * 0.8) * 4;
-  ctx.fillStyle = flash ? '#ffffff' : '#cc3300';
-  ctx.beginPath();
-  ctx.moveTo(tailEndX, tailEndY - 8);
-  ctx.lineTo(tailEndX - 10, tailEndY);
-  ctx.lineTo(tailEndX, tailEndY + 8);
-  ctx.closePath(); ctx.fill();
 
-  // === LEGS (4 per side) ===
-  ctx.strokeStyle = flash ? '#ffffff' : '#993300';
-  ctx.lineWidth = 2;
+  // === SHADOW ===
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.beginPath(); ctx.ellipse(0, 6, R + 8, R * 0.35, 0, 0, Math.PI * 2); ctx.fill();
+
+  // === TAIL ===
+  const tailWhip = boss.tailWhipAnim || 0;
+  const tailSegs = 7;
+  ctx.lineWidth = 7; ctx.lineCap = 'round';
+  // Tail segments with undulation
+  for (let layer = 0; layer < 2; layer++) {
+    ctx.strokeStyle = layer === 0 ? (flash ? '#ffffff' : '#882200') : (flash ? '#ffcccc' : '#aa3311');
+    ctx.lineWidth = layer === 0 ? 8 : 5;
+    ctx.beginPath();
+    ctx.moveTo(-R * 0.75, 0);
+    for (let i = 1; i <= tailSegs; i++) {
+      const frac = i / tailSegs;
+      const tx = -R * 0.75 - i * 10;
+      const wave = Math.sin(t * 5 + i * 0.7) * 6 * frac;
+      const whipOff = tailWhip * Math.sin(i * 1.2) * 15;
+      ctx.lineTo(tx, wave + whipOff);
+    }
+    ctx.stroke();
+  }
+  // Tail fan (big, spiky)
+  const tailEndX = -R * 0.75 - tailSegs * 10;
+  const tailEndY = Math.sin(t * 5 + tailSegs * 0.7) * 6;
+  ctx.fillStyle = flash ? '#ffffff' : enr ? '#cc0000' : '#cc3300';
+  ctx.shadowColor = '#ff4400'; ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(tailEndX, tailEndY - 14);
+  ctx.lineTo(tailEndX - 8, tailEndY - 10);
+  ctx.lineTo(tailEndX - 16, tailEndY);
+  ctx.lineTo(tailEndX - 8, tailEndY + 10);
+  ctx.lineTo(tailEndX, tailEndY + 14);
+  ctx.lineTo(tailEndX + 4, tailEndY);
+  ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // === LEGS (5 per side, jointed) ===
   for (let side = -1; side <= 1; side += 2) {
-    for (let i = 0; i < 4; i++) {
-      const lx = -R * 0.3 + i * R * 0.3;
+    for (let i = 0; i < 5; i++) {
+      const lx = -R * 0.4 + i * R * 0.25;
       const ly = side * R * 0.5;
-      const legPhase = boss.legAnim + i * 0.8 + (side > 0 ? Math.PI : 0);
-      const legEndX = lx + Math.sin(legPhase) * 4;
-      const legEndY = ly + side * 10 + Math.cos(legPhase) * 3;
-      ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(legEndX, legEndY); ctx.stroke();
+      const legPhase = boss.legAnim + i * 0.7 + (side > 0 ? Math.PI : 0);
+      const midX = lx + Math.sin(legPhase) * 3;
+      const midY = ly + side * 8;
+      const endX = midX + Math.sin(legPhase + 0.5) * 5;
+      const endY = midY + side * 10 + Math.cos(legPhase) * 3;
+      // Leg segment 1
+      ctx.strokeStyle = flash ? '#ffffff' : '#993311';
+      ctx.lineWidth = 3; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(midX, midY); ctx.stroke();
+      // Leg segment 2
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(midX, midY); ctx.lineTo(endX, endY); ctx.stroke();
+      // Leg tip
+      ctx.fillStyle = flash ? '#ffffff' : '#ff6644';
+      ctx.beginPath(); ctx.arc(endX, endY, 1.5, 0, Math.PI * 2); ctx.fill();
     }
   }
 
-  // === BODY (main carapace) ===
-  const bodyColor = flash ? '#ffffff' : enr ? '#ee2200' : '#cc3300';
-  ctx.fillStyle = bodyColor;
-  ctx.shadowColor = '#ff4400'; ctx.shadowBlur = enr ? 18 : 10;
+  // === BODY (armored carapace) ===
+  const bodyBase = flash ? '#ffffff' : enr ? '#cc1100' : '#bb2800';
+  const bodyHighlight = flash ? '#ffffff' : enr ? '#ff3300' : '#dd4411';
+  // Outer shell
+  ctx.fillStyle = bodyBase;
+  ctx.shadowColor = enr ? '#ff0000' : '#ff4400';
+  ctx.shadowBlur = enr ? 25 : 14;
   ctx.beginPath();
-  ctx.ellipse(0, 0, R, R * 0.65, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, R, R * 0.62, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.shadowBlur = 0;
-
-  // Body detail — carapace line
-  ctx.strokeStyle = flash ? '#ffcccc' : '#992200';
+  // Shell segments
+  ctx.strokeStyle = flash ? '#ffcccc' : '#881800';
   ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.ellipse(0, 0, R * 0.6, R * 0.4, 0, 0, Math.PI * 2);
-  ctx.stroke();
-  // Center ridge
-  ctx.beginPath(); ctx.moveTo(-R * 0.5, 0); ctx.lineTo(R * 0.3, 0); ctx.stroke();
-
-  // === ANTENNAE ===
-  ctx.strokeStyle = flash ? '#ffffff' : '#ff6644';
-  ctx.lineWidth = 1.5;
-  for (let side = -1; side <= 1; side += 2) {
-    ctx.beginPath();
-    ctx.moveTo(R * 0.7, side * R * 0.2);
-    const antX = R * 1.4 + Math.sin(t * 3 + side) * 4;
-    const antY = side * R * 0.6 + Math.cos(t * 2.5 + side * 2) * 3;
-    ctx.quadraticCurveTo(R * 1.1, side * R * 0.5, antX, antY);
-    ctx.stroke();
-    // Antenna tip
-    ctx.fillStyle = '#ff8866';
-    ctx.beginPath(); ctx.arc(antX, antY, 1.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, 0, R * 0.7, R * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(0, 0, R * 0.4, R * 0.28, 0, 0, Math.PI * 2); ctx.stroke();
+  // Carapace ridges
+  for (let i = 0; i < 5; i++) {
+    const rx = -R * 0.3 + i * R * 0.15;
+    ctx.beginPath(); ctx.moveTo(rx, -R * 0.3); ctx.lineTo(rx + 2, R * 0.3); ctx.stroke();
+  }
+  // Shell highlight
+  const hlg = ctx.createRadialGradient(-R * 0.15, -R * 0.12, 0, -R * 0.15, -R * 0.12, R * 0.5);
+  hlg.addColorStop(0, 'rgba(255,200,150,0.15)'); hlg.addColorStop(1, 'rgba(255,200,150,0)');
+  ctx.fillStyle = hlg; ctx.beginPath(); ctx.ellipse(-R * 0.15, -R * 0.12, R * 0.5, R * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+  // Spiny bumps on shell
+  ctx.fillStyle = flash ? '#ffffff' : '#992200';
+  for (let i = 0; i < 6; i++) {
+    const bumpA = -0.8 + i * 0.32;
+    const bumpR = R * 0.55 + Math.sin(i * 2.1) * 3;
+    ctx.beginPath(); ctx.arc(Math.cos(bumpA) * bumpR, Math.sin(bumpA) * bumpR * 0.6, 3, 0, Math.PI * 2); ctx.fill();
   }
 
-  // === CLAWS ===
+  // === ANTENNAE (long, whippy) ===
+  for (let side = -1; side <= 1; side += 2) {
+    ctx.strokeStyle = flash ? '#ffffff' : '#ff6644';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const ax = R * 0.75, ay = side * R * 0.15;
+    ctx.moveTo(ax, ay);
+    const ant1x = R * 1.2 + Math.sin(t * 4 + side * 2) * 5;
+    const ant1y = side * R * 0.4 + Math.cos(t * 3 + side) * 4;
+    const ant2x = R * 1.8 + Math.sin(t * 3.5 + side * 3) * 8;
+    const ant2y = side * R * 0.7 + Math.cos(t * 2.8 + side * 1.5) * 6;
+    ctx.quadraticCurveTo(ant1x, ant1y, ant2x, ant2y);
+    ctx.stroke();
+    // Second antenna (thinner, longer)
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay + side * 3);
+    const ant3x = R * 2.2 + Math.sin(t * 3 + side * 4) * 10;
+    const ant3y = side * R * 0.9 + Math.cos(t * 2.3 + side * 2) * 8;
+    ctx.quadraticCurveTo(R * 1.5, side * R * 0.6, ant3x, ant3y);
+    ctx.stroke();
+  }
+
+  // === CLAWS (big, scary) ===
   const clawOpen = boss.clawOpen;
   for (let side = -1; side <= 1; side += 2) {
-    const clawBaseX = R * 0.6;
-    const clawBaseY = side * R * 0.55;
-    // Arm
-    const armEndX = R * 1.2;
-    const armEndY = side * R * 0.7;
-    ctx.strokeStyle = flash ? '#ffffff' : '#dd3300';
-    ctx.lineWidth = 5; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(clawBaseX, clawBaseY); ctx.lineTo(armEndX, armEndY); ctx.stroke();
+    const clawBaseX = R * 0.55;
+    const clawBaseY = side * R * 0.5;
+    // Arm segment 1
+    const arm1x = R * 0.9, arm1y = side * R * 0.65;
+    ctx.strokeStyle = flash ? '#ffffff' : '#cc2200';
+    ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(clawBaseX, clawBaseY); ctx.lineTo(arm1x, arm1y); ctx.stroke();
+    // Arm segment 2
+    const armEndX = R * 1.35;
+    const armEndY = side * R * 0.75;
+    ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(arm1x, arm1y); ctx.lineTo(armEndX, armEndY); ctx.stroke();
+    // Joint
+    ctx.fillStyle = flash ? '#ffffff' : '#dd4422';
+    ctx.beginPath(); ctx.arc(arm1x, arm1y, 4, 0, Math.PI * 2); ctx.fill();
 
-    // Claw pincers
-    const pincerLen = 14;
-    const openAngle = 0.35 * clawOpen;
-    ctx.lineWidth = 3.5;
-    ctx.fillStyle = flash ? '#ffffff' : enr ? '#ff2200' : '#ee4400';
-    ctx.strokeStyle = flash ? '#ffffff' : '#ff6644';
+    // Claw pincers (MUCH bigger)
+    const pincerLen = 22;
+    const openAmt = pincerLen * 0.25 * clawOpen;
     // Upper pincer
+    ctx.fillStyle = flash ? '#ffffff' : enr ? '#ff1100' : '#dd3300';
+    ctx.shadowColor = enr ? '#ff0000' : '#ff4400'; ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.moveTo(armEndX, armEndY);
-    const up1x = armEndX + Math.cos(-openAngle) * pincerLen;
-    const up1y = armEndY + side * Math.sin(openAngle) * pincerLen * 0.3 - (side > 0 ? 0 : 0);
-    ctx.lineTo(armEndX + pincerLen * 0.8, armEndY - side * pincerLen * 0.15 * clawOpen);
-    ctx.stroke();
+    ctx.lineTo(armEndX + pincerLen * 0.4, armEndY - side * openAmt);
+    ctx.lineTo(armEndX + pincerLen, armEndY - side * openAmt * 0.3);
+    ctx.lineTo(armEndX + pincerLen * 0.85, armEndY);
+    ctx.closePath(); ctx.fill();
     // Lower pincer
     ctx.beginPath();
     ctx.moveTo(armEndX, armEndY);
-    ctx.lineTo(armEndX + pincerLen * 0.8, armEndY + side * pincerLen * 0.15 * clawOpen);
-    ctx.stroke();
-    // Pincer fill
-    ctx.fillStyle = flash ? '#ffcccc' : '#cc3300';
-    ctx.beginPath();
-    ctx.moveTo(armEndX, armEndY);
-    ctx.lineTo(armEndX + pincerLen * 0.8, armEndY - side * pincerLen * 0.15 * clawOpen);
-    ctx.lineTo(armEndX + pincerLen, armEndY);
-    ctx.lineTo(armEndX + pincerLen * 0.8, armEndY + side * pincerLen * 0.15 * clawOpen);
+    ctx.lineTo(armEndX + pincerLen * 0.4, armEndY + side * openAmt);
+    ctx.lineTo(armEndX + pincerLen, armEndY + side * openAmt * 0.3);
+    ctx.lineTo(armEndX + pincerLen * 0.85, armEndY);
     ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
+    // Claw edge
+    ctx.strokeStyle = flash ? '#ffcccc' : '#ff8866';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(armEndX + pincerLen * 0.4, armEndY - side * openAmt);
+    ctx.lineTo(armEndX + pincerLen, armEndY - side * openAmt * 0.3);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(armEndX + pincerLen * 0.4, armEndY + side * openAmt);
+    ctx.lineTo(armEndX + pincerLen, armEndY + side * openAmt * 0.3);
+    ctx.stroke();
+    // Serrated teeth on pincer edges
+    ctx.fillStyle = flash ? '#ffffff' : '#ffaa66';
+    for (let ti = 0; ti < 3; ti++) {
+      const tf = 0.3 + ti * 0.25;
+      const tpx = armEndX + pincerLen * tf;
+      ctx.beginPath(); ctx.arc(tpx, armEndY - side * openAmt * (1 - tf * 0.6), 1.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(tpx, armEndY + side * openAmt * (1 - tf * 0.6), 1.5, 0, Math.PI * 2); ctx.fill();
+    }
   }
 
-  // === EYES ===
+  // === EYES (stalked, menacing) ===
   const eyeGlow = enr ? '#ff0000' : '#ffcc00';
   for (let side = -1; side <= 1; side += 2) {
-    const ex = R * 0.55, ey = side * R * 0.22;
+    const esx = R * 0.5, esy = side * R * 0.2;
     // Eye stalk
     ctx.strokeStyle = flash ? '#ffffff' : '#cc3300';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.moveTo(ex - 3, ey); ctx.lineTo(ex + 4, ey + side * 2); ctx.stroke();
-    // Eye
+    ctx.lineWidth = 3.5;
+    const stalkEndX = esx + 10 + Math.sin(t * 2.5 + side) * 2;
+    const stalkEndY = esy + side * 6 + Math.cos(t * 3 + side * 2) * 1.5;
+    ctx.beginPath(); ctx.moveTo(esx, esy); ctx.lineTo(stalkEndX, stalkEndY); ctx.stroke();
+    // Eye bulb
+    ctx.fillStyle = '#111';
+    ctx.beginPath(); ctx.arc(stalkEndX, stalkEndY, 5, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = flash ? '#ffffff' : eyeGlow;
-    ctx.shadowColor = eyeGlow; ctx.shadowBlur = 6;
-    ctx.beginPath(); ctx.arc(ex + 4, ey + side * 2, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowColor = eyeGlow; ctx.shadowBlur = enr ? 12 : 6;
+    ctx.beginPath(); ctx.arc(stalkEndX, stalkEndY, 3.5, 0, Math.PI * 2); ctx.fill();
+    // Pupil
     ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(ex + 5, ey + side * 2, 1.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(stalkEndX + 1.5, stalkEndY, 1.5, 0, Math.PI * 2); ctx.fill();
+    // Eye shine
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath(); ctx.arc(stalkEndX - 1, stalkEndY - 1.5, 1, 0, Math.PI * 2); ctx.fill();
     ctx.shadowBlur = 0;
   }
 
+  // === MOUTH (under head) ===
+  ctx.fillStyle = flash ? '#ffffff' : '#440000';
+  ctx.beginPath();
+  ctx.moveTo(R * 0.4, -4); ctx.lineTo(R * 0.6, 0); ctx.lineTo(R * 0.4, 4);
+  ctx.closePath(); ctx.fill();
+  // Mandibles
+  ctx.strokeStyle = flash ? '#ffffff' : '#ff4422';
+  ctx.lineWidth = 2;
+  const mandOpen = 3 + Math.sin(t * 6) * 2;
+  ctx.beginPath(); ctx.moveTo(R * 0.6, 0); ctx.lineTo(R * 0.72, -mandOpen); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(R * 0.6, 0); ctx.lineTo(R * 0.72, mandOpen); ctx.stroke();
+
   ctx.restore();
 
-  // === NAME + HP BAR (above boss) ===
-  ctx.font = 'bold 10px Orbitron, sans-serif'; ctx.textAlign = 'center';
-  ctx.fillStyle = enr ? '#ff2200' : '#ff6600';
-  ctx.shadowColor = '#ff4400'; ctx.shadowBlur = 5;
-  const label = enr ? '🦞 LOBSTER KING — ENRAGED! 🦞' : '🦞 LOBSTER KING 🦞';
-  ctx.fillText(label, sx, sy - R - 16);
+  // === NAME + HP BAR (above boss, scaled bigger) ===
+  ctx.font = 'bold 12px Orbitron, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillStyle = enr ? '#ff0000' : '#ff6600';
+  ctx.shadowColor = '#ff4400'; ctx.shadowBlur = 8;
+  const label = charging ? '⚡ LOBSTER KING — CHARGING! ⚡' : enr ? '🦞 LOBSTER KING — ENRAGED! 🦞' : '🦞 LOBSTER KING 🦞';
+  ctx.fillText(label, sx, sy - R - 22);
   ctx.shadowBlur = 0;
 
-  // Mini HP bar above boss
-  const bw = 50;
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillRect(sx - bw / 2, sy - R - 10, bw, 4);
+  // Mini HP bar above boss (wider)
+  const bw = 70;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(sx - bw / 2, sy - R - 16, bw, 5);
   const hpP = boss.hp / boss.maxHp;
-  ctx.fillStyle = hpP > 0.3 ? '#ff6600' : '#ff0000';
-  ctx.fillRect(sx - bw / 2, sy - R - 10, bw * hpP, 4);
-
-  // Enrage aura pulsing particles
-  if (enr && Math.random() < 0.3) {
-    const pa = Math.random() * Math.PI * 2;
-    parts.push({ x: boss.x + Math.cos(pa) * R, y: boss.y + Math.sin(pa) * R,
-      vx: Math.cos(pa) * 40, vy: Math.sin(pa) * 40,
-      color: '#ff2200', size: 2 + Math.random() * 2, life: 0.4, maxLife: 0.4, grav: 0, bounce: false });
-  }
+  const hpColor = hpP > 0.5 ? '#ff6600' : hpP > 0.25 ? '#ff3300' : '#ff0000';
+  ctx.fillStyle = hpColor;
+  ctx.fillRect(sx - bw / 2, sy - R - 16, bw * hpP, 5);
+  ctx.strokeStyle = '#ff440033'; ctx.lineWidth = 1;
+  ctx.strokeRect(sx - bw / 2, sy - R - 16, bw, 5);
 }
 
 // ═══ DEFAULT BOT CONFIGS ═══
