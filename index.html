@@ -101,6 +101,32 @@ canvas{display:block;position:fixed;top:0;left:0}
 #tourney-end .te-row .tw{min-width:30px;text-align:right;color:#0f0}
 #tourney-end .te-row .tl{min-width:30px;text-align:right;color:#f44}
 
+/* ═══ LEADERBOARD ═══ */
+#leaderboard-section{margin-top:20px;width:90%;max-width:500px}
+#leaderboard-section .lb-title{font-family:'Orbitron',sans-serif;font-size:.75em;color:#f0f;letter-spacing:3px;text-align:center;margin-bottom:8px}
+#leaderboard-section .lb-header{display:flex;padding:4px 10px;font-size:.55em;color:#444;letter-spacing:1px;border-bottom:1px solid #1a1a2a}
+#leaderboard-section .lb-header span{flex:1;text-align:center}
+#leaderboard-section .lb-header span:first-child{flex:0 0 30px;text-align:left}
+#leaderboard-section .lb-header span:nth-child(2){flex:2;text-align:left}
+#lb-rows{max-height:200px;overflow-y:auto}
+.lb-row{display:flex;align-items:center;padding:5px 10px;border-bottom:1px solid #0a0a15;font-size:.65em;transition:.2s}
+.lb-row:hover{background:rgba(255,255,255,.02)}
+.lb-row .lb-rank{flex:0 0 30px;font-family:'Orbitron',sans-serif;font-weight:700}
+.lb-row .lb-rank.gold{color:#ffd700;text-shadow:0 0 6px rgba(255,215,0,.3)}
+.lb-row .lb-rank.silver{color:#c0c0c0;text-shadow:0 0 6px rgba(192,192,192,.2)}
+.lb-row .lb-rank.bronze{color:#cd7f32;text-shadow:0 0 6px rgba(205,127,50,.2)}
+.lb-row .lb-name{flex:2;font-weight:bold}
+.lb-row .lb-stat{flex:1;text-align:center}
+.lb-row .lb-wins{color:#00ff88}
+.lb-row .lb-losses{color:#ff4444}
+.lb-row .lb-wr{color:#0ff}
+.lb-row .lb-streak{color:#f0f}
+.lb-row .lb-boss{color:#ff6600}
+#lb-empty{text-align:center;color:#333;font-size:.6em;padding:15px;letter-spacing:1px}
+#lb-toggle{font-family:'Share Tech Mono',monospace;font-size:.65em;color:#555;background:transparent;border:1px solid #222;
+  padding:4px 14px;cursor:pointer;letter-spacing:1px;transition:.3s;margin-top:8px;pointer-events:all}
+#lb-toggle:hover{border-color:#0ff;color:#0ff}
+
 /* Overlays */
 #vignette{position:fixed;inset:0;z-index:4;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.5) 100%)}
 #scanlines{position:fixed;inset:0;z-index:3;pointer-events:none;opacity:.03;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.3) 2px,rgba(0,0,0,.3) 4px)}
@@ -113,6 +139,13 @@ canvas{display:block;position:fixed;top:0;left:0}
   <div class="sub">⚡ 1v1 BOT COMBAT ⚡</div>
   <div class="bot-roster" id="roster"></div>
   <div id="bot-count" style="font-size:.65em;color:#666;margin-top:8px;letter-spacing:1px"></div>
+  <div id="leaderboard-section">
+    <div class="lb-title">🏆 LEADERBOARD 🏆</div>
+    <div class="lb-header"><span>#</span><span>FIGHTER</span><span>W</span><span>L</span><span>W%</span><span>BOSS</span></div>
+    <div id="lb-rows"></div>
+    <div id="lb-empty">NO MATCHES PLAYED YET</div>
+    <div style="text-align:center"><button id="lb-toggle">RESET STATS</button></div>
+  </div>
   <button class="start-btn" id="startBtn">START TOURNAMENT</button>
   <div id="need-bots" style="display:none;color:#ff4444;font-size:.7em;margin-top:10px;letter-spacing:1px">
     ⚠️ NEED AT LEAST 2 FIGHTERS<br>
@@ -253,7 +286,7 @@ let botConfigs = [], matchups = [], currentMatch = 0, standings = {};
 let bots = [], projs = [], parts = [], beams = [];
 let boss = null;
 let cam = {x:0,y:0,tx:0,ty:0};
-let shake = 0, gameTime = 0, roundKills = [0,0];
+let shake = 0, gameTime = 0, roundKills = [0,0], bossKills = [0,0];
 let announceText = '', announceTimer = 0, announceColor = '#ff0';
 let keys = {}, specIdx = 0, freeCam = false;
 let lt = 0;
@@ -280,6 +313,53 @@ function moveEnt(e,dx,dy,dt) {
 function spawnP(x,y,n,color,speed,size,life) {
   for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=Math.random()*speed;
     parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color,size:size*(0.5+Math.random()),life,maxLife:life,grav:0,bounce:false});}
+}
+
+// ═══ LEADERBOARD (persistent) ═══
+const LB_KEY = 'clawwars_leaderboard';
+function loadLeaderboard() {
+  try { return JSON.parse(localStorage.getItem(LB_KEY)) || {}; } catch(e) { return {}; }
+}
+function saveLeaderboard(lb) {
+  try { localStorage.setItem(LB_KEY, JSON.stringify(lb)); } catch(e) {}
+}
+function updateLeaderboardEntry(lb, name, win, bossKills) {
+  if (!lb[name]) lb[name] = { w: 0, l: 0, bk: 0, streak: 0, bestStreak: 0 };
+  const e = lb[name];
+  if (win) { e.w++; e.streak++; if (e.streak > e.bestStreak) e.bestStreak = e.streak; }
+  else { e.l++; e.streak = 0; }
+  e.bk += (bossKills || 0);
+}
+function renderLeaderboard(configs) {
+  const lb = loadLeaderboard();
+  const rows = document.getElementById('lb-rows');
+  const empty = document.getElementById('lb-empty');
+  const entries = [];
+  configs.forEach(cfg => {
+    const name = cfg.name;
+    const s = lb[name] || { w: 0, l: 0, bk: 0, streak: 0, bestStreak: 0 };
+    const total = s.w + s.l;
+    const wr = total > 0 ? Math.round(s.w / total * 100) : 0;
+    entries.push({ name, color: cfg.color, ...s, total, wr });
+  });
+  // Sort by wins, then win rate
+  entries.sort((a, b) => b.w - a.w || b.wr - a.wr || a.l - b.l);
+  if (entries.length === 0 || entries.every(e => e.total === 0)) {
+    rows.innerHTML = ''; empty.style.display = 'block'; return;
+  }
+  empty.style.display = 'none';
+  rows.innerHTML = entries.map((e, i) => {
+    const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+    const rankIcon = i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`;
+    return `<div class="lb-row">
+      <span class="lb-rank ${rankClass}">${rankIcon}</span>
+      <span class="lb-name" style="color:${e.color}">${e.name}</span>
+      <span class="lb-stat lb-wins">${e.w}</span>
+      <span class="lb-stat lb-losses">${e.l}</span>
+      <span class="lb-stat lb-wr">${e.wr}%</span>
+      <span class="lb-stat lb-boss">${e.bk}🦞</span>
+    </div>`;
+  }).join('');
 }
 
 // ═══ BOT LOADING ═══
@@ -414,7 +494,7 @@ function hurtBoss(dmg,attacker){
   boss.hp-=dmg; boss.flashTimer=0.08; shake=Math.max(shake,0.1);
   if(boss.hp<=0){
     boss.hp=0;boss.alive=false;boss.respawnT=20;
-    if(attacker){const idx=bots.indexOf(attacker);if(idx>=0)roundKills[idx]+=3;
+    if(attacker){const idx=bots.indexOf(attacker);if(idx>=0){roundKills[idx]+=3;bossKills[idx]++;}
       announceText=`${attacker.name} SLAYS THE BOSS! (+3)`;announceTimer=3;announceColor='#ff8800';
       addKill(attacker.name,'🦞 BOSS',attacker.color);
     }
@@ -774,7 +854,7 @@ function startFight(){
   genMap();initPickups();initBoss();
   bots=[makeBot(botConfigs[i],6*TILE,MH*TILE/2), makeBot(botConfigs[j],(MW-6)*TILE,MH*TILE/2)];
   bots[0].angle=0;bots[1].angle=Math.PI;
-  projs=[];parts=[];beams=[];roundKills=[0,0];gameTime=0;shake=0;specIdx=0;freeCam=false;
+  projs=[];parts=[];beams=[];roundKills=[0,0];bossKills=[0,0];gameTime=0;shake=0;specIdx=0;freeCam=false;
   announceText='FIGHT!';announceTimer=2;announceColor='#0ff';
   document.getElementById('round-info').textContent=`MATCH ${currentMatch+1} OF ${matchups.length}`;
   document.getElementById('kill-feed').innerHTML='';
@@ -795,18 +875,25 @@ function endRound(winIdx){
   const el=document.getElementById('round-result');el.style.display='flex';
   const [i,j]=matchups[currentMatch];
   const cfg0=botConfigs[i],cfg1=botConfigs[j];
+  const lb = loadLeaderboard();
   if(winIdx>=0){
-    const wCfg=winIdx===0?cfg0:cfg1;
+    const wCfg=winIdx===0?cfg0:cfg1, lCfg=winIdx===0?cfg1:cfg0;
+    const wBK=bossKills[winIdx], lBK=bossKills[winIdx===0?1:0];
     document.getElementById('rr-winner').textContent=wCfg.name+' WINS!';
     document.getElementById('rr-winner').style.color=wCfg.color;
     document.getElementById('rr-sub').textContent=wCfg.title||'VICTORY';
     standings[wCfg.name]=(standings[wCfg.name]||{w:0,l:0});standings[wCfg.name].w++;
-    const lCfg=winIdx===0?cfg1:cfg0;standings[lCfg.name]=(standings[lCfg.name]||{w:0,l:0});standings[lCfg.name].l++;
+    standings[lCfg.name]=(standings[lCfg.name]||{w:0,l:0});standings[lCfg.name].l++;
+    updateLeaderboardEntry(lb, wCfg.name, true, wBK);
+    updateLeaderboardEntry(lb, lCfg.name, false, lBK);
   } else {
     document.getElementById('rr-winner').textContent='DRAW';document.getElementById('rr-winner').style.color='#888';
     document.getElementById('rr-sub').textContent='TIME EXPIRED';
     standings[cfg0.name]=(standings[cfg0.name]||{w:0,l:0});standings[cfg1.name]=(standings[cfg1.name]||{w:0,l:0});
+    updateLeaderboardEntry(lb, cfg0.name, false, bossKills[0]);
+    updateLeaderboardEntry(lb, cfg1.name, false, bossKills[1]);
   }
+  saveLeaderboard(lb);
   document.getElementById('rr-stats').innerHTML=
     `<span style="color:${cfg0.color}">${cfg0.name}</span>: ${roundKills[0]} kills<br>` +
     `<span style="color:${cfg1.color}">${cfg1.name}</span>: ${roundKills[1]} kills<br>` +
@@ -836,7 +923,7 @@ function showTourneyEnd(){
 }
 
 document.getElementById('replayBtn').addEventListener('click',()=>{
-  document.getElementById('tourney-end').style.display='none';startTournament();});
+  document.getElementById('tourney-end').style.display='none';renderLeaderboard(botConfigs);startTournament();});
 
 function startTournament(){
   matchups=generateMatchups(botConfigs);currentMatch=0;standings={};
@@ -889,8 +976,10 @@ function buildRoster(configs){
 }
 
 async function boot(){
-  botConfigs=await loadBotConfigs();buildRoster(botConfigs);
+  botConfigs=await loadBotConfigs();buildRoster(botConfigs);renderLeaderboard(botConfigs);
   document.getElementById('bot-count').textContent=`${botConfigs.length} FIGHTER${botConfigs.length!==1?'S':''} REGISTERED`;
+  document.getElementById('lb-toggle').addEventListener('click',()=>{
+    if(confirm('Reset all leaderboard stats?')){localStorage.removeItem(LB_KEY);renderLeaderboard(botConfigs);}});
   if(botConfigs.length<2){
     const btn=document.getElementById('startBtn');btn.textContent='WAITING FOR FIGHTERS...';
     btn.style.borderColor='#555';btn.style.color='#555';btn.style.cursor='not-allowed';
