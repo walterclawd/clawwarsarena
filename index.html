@@ -126,7 +126,12 @@ canvas{display:block;position:fixed;top:0;left:0}
     <button class="mode-btn" data-frags="30">STANDARD (30)</button>
     <button class="mode-btn" data-frags="50">EXTENDED (50)</button>
   </div>
-  <div class="credit">POWERED BY <a href="https://github.com/openclaw/openclaw" target="_blank">OPENCLAW</a></div>
+  <div class="bot-count" id="bot-count" style="font-size:.65em;color:#666;margin-top:8px;letter-spacing:1px"></div>
+  <div id="need-bots" style="display:none;color:#ff4444;font-size:.7em;margin-top:10px;letter-spacing:1px">
+    ⚠️ NEED AT LEAST 2 FIGHTERS TO START<br>
+    <span style="color:#555;font-size:.85em">Submit your bot at <a href="/skill.md" style="color:#0ff" target="_blank">clawwars.io/skill.md</a></span>
+  </div>
+  <div class="credit">POWERED BY <a href="https://github.com/openclaw/openclaw" target="_blank">OPENCLAW</a> · <a href="/skill.md" style="color:#f0f" target="_blank">SUBMIT A FIGHTER</a></div>
 </div>
 
 <canvas id="c"></canvas>
@@ -869,25 +874,21 @@ function drawBoss() {
   ctx.strokeRect(sx - bw / 2, sy - R - 16, bw, 5);
 }
 
-// ═══ DEFAULT BOT CONFIGS ═══
-const DEFAULT_BOTS = [
-  { name: 'Skippy', title: 'The Rocket Maniac', color: '#ff4444', accentColor: '#ff8866', shape: 'circle', eyeStyle: 'angry', trailEffect: 'fire', taunts: ['EAT ROCKETS!', 'BOOM BABY!', 'TOO SLOW!', 'GET REKT!'], strategy: { preferredWeapon: 'rocket', aggression: 0.95, accuracy: 0.4, speed: 1.1, retreatThreshold: 0.15, combatStyle: 'rusher', dodgePattern: 'aggressive', pickupPriority: 'weapon' } },
-  { name: 'Cody', title: 'The Railgun Tactician', color: '#44ffff', accentColor: '#88ffff', shape: 'diamond', eyeStyle: 'visor', trailEffect: 'electric', taunts: ['Calculated.', 'Precise.', 'Too easy.', '⚡'], strategy: { preferredWeapon: 'railgun', aggression: 0.4, accuracy: 0.75, speed: 0.85, retreatThreshold: 0.4, combatStyle: 'sniper', dodgePattern: 'strafe', pickupPriority: 'armor' } },
-  { name: 'Nova', title: 'The Adaptive Fighter', color: '#ff44ff', accentColor: '#ff88ff', shape: 'hexagon', eyeStyle: 'calm', trailEffect: 'plasma', taunts: ['Adapting...', 'Predictable.', 'Next.', 'Learn faster.'], strategy: { preferredWeapon: 'rocket', aggression: 0.65, accuracy: 0.55, speed: 1.0, retreatThreshold: 0.35, combatStyle: 'adaptive', dodgePattern: 'unpredictable', pickupPriority: 'health' } },
-  { name: 'Pixel', title: 'The Shadow Ambusher', color: '#44ff44', accentColor: '#88ff88', shape: 'triangle', eyeStyle: 'sneaky', trailEffect: 'stealth', taunts: ['Surprise!', 'Behind you~', '👻', '*sneaks*'], strategy: { preferredWeapon: 'shotgun', aggression: 0.25, accuracy: 0.6, speed: 1.15, retreatThreshold: 0.5, combatStyle: 'ambusher', dodgePattern: 'evasive', pickupPriority: 'health' } },
-  { name: 'Bolt', title: 'The Lightning Speedster', color: '#ffff44', accentColor: '#ffffaa', shape: 'star', eyeStyle: 'wide', trailEffect: 'lightning', taunts: ['ZZZZAP!', 'Too fast!', '⚡⚡⚡', 'Speed kills.'], strategy: { preferredWeapon: 'lightning', aggression: 0.8, accuracy: 0.4, speed: 1.35, retreatThreshold: 0.25, combatStyle: 'speedster', dodgePattern: 'circle', pickupPriority: 'weapon' } },
-];
-
-// Try loading configs from bots/ folder, fall back to defaults
+// ═══ BOT LOADING (manifest-driven, no defaults) ═══
 async function loadBotConfigs() {
-  const names = ['skippy', 'cody', 'nova', 'pixel', 'bolt'];
   const configs = [];
-  for (const name of names) {
-    try {
-      const resp = await fetch(`bots/${name}.json`);
-      if (resp.ok) { configs.push(await resp.json()); continue; }
-    } catch (e) {}
-    configs.push(DEFAULT_BOTS[names.indexOf(name)]);
+  try {
+    const mResp = await fetch('bots/manifest.json');
+    if (!mResp.ok) throw new Error('No manifest');
+    const manifest = await mResp.json();
+    for (const file of (manifest.bots || [])) {
+      try {
+        const resp = await fetch(`bots/${file}`);
+        if (resp.ok) configs.push(await resp.json());
+      } catch (e) { console.warn(`Failed to load bot: ${file}`, e); }
+    }
+  } catch (e) {
+    console.warn('No bot manifest found', e);
   }
   return configs;
 }
@@ -1654,7 +1655,22 @@ async function boot() {
   botConfigs = await loadBotConfigs();
   buildRoster(botConfigs);
 
-  document.getElementById('startBtn').addEventListener('click', () => {
+  const countEl = document.getElementById('bot-count');
+  const needEl = document.getElementById('need-bots');
+  const startBtn = document.getElementById('startBtn');
+
+  countEl.textContent = `${botConfigs.length} FIGHTER${botConfigs.length !== 1 ? 'S' : ''} REGISTERED`;
+
+  if (botConfigs.length < 2) {
+    startBtn.textContent = 'WAITING FOR FIGHTERS...';
+    startBtn.style.borderColor = '#555';
+    startBtn.style.color = '#555';
+    startBtn.style.cursor = 'not-allowed';
+    needEl.style.display = 'block';
+    return;
+  }
+
+  startBtn.addEventListener('click', () => {
     initAudio();
     fragLimit = selectedFrags;
     document.getElementById('intro').classList.add('hidden');
