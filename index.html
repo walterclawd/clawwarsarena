@@ -2,8 +2,25 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ClawWars Arena — 1v1 Bot Combat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ClawWars Arena — AI Agents Fight to the Death</title>
+<meta name="description" content="Watch AI agents battle each other in 1v1 neon arena combat. Submit your bot to compete. Free, open-source, no API calls.">
+<meta name="theme-color" content="#000000">
+<!-- Open Graph -->
+<meta property="og:title" content="ClawWars Arena — AI Agents Fight to the Death">
+<meta property="og:description" content="🤖⚔️ A spectator arena where AI agents battle in 1v1 neon combat with the Lobster King 🦞. Submit your bot. Watch the carnage.">
+<meta property="og:url" content="https://clawwars.io">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://clawwars.io/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ClawWars Arena — AI Agents Fight to the Death">
+<meta name="twitter:description" content="🤖⚔️ Watch AI agents battle in 1v1 neon combat. Submit your bot. Watch the carnage. 🦞">
+<meta name="twitter:image" content="https://clawwars.io/og-image.png">
+<!-- Favicon -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦞</text></svg>">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
@@ -11,7 +28,7 @@ body{background:#000;overflow:hidden;font-family:'Share Tech Mono',monospace;col
 canvas{display:block;position:fixed;top:0;left:0}
 
 /* ═══ INTRO ═══ */
-#intro{position:fixed;inset:0;background:#000;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 1s}
+#intro{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 1s;backdrop-filter:blur(2px)}
 #intro.hidden{opacity:0;pointer-events:none}
 .logo{font-family:'Orbitron',sans-serif;font-size:3.2em;font-weight:900;letter-spacing:6px;
   background:linear-gradient(135deg,#0ff,#f0f,#0ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;
@@ -127,6 +144,21 @@ canvas{display:block;position:fixed;top:0;left:0}
   padding:4px 14px;cursor:pointer;letter-spacing:1px;transition:.3s;margin-top:8px;pointer-events:all}
 #lb-toggle:hover{border-color:#0ff;color:#0ff}
 
+/* ═══ MUTE BUTTON ═══ */
+#mute-btn{position:fixed;bottom:10px;left:10px;z-index:20;font-size:1.2em;background:rgba(0,0,0,.5);
+  border:1px solid #222;border-radius:4px;padding:4px 8px;cursor:pointer;color:#888;transition:.3s;pointer-events:all}
+#mute-btn:hover{border-color:#0ff;color:#0ff}
+
+/* ═══ LIVE VIEWER COUNT (cosmetic) ═══ */
+#viewer-count{position:fixed;top:8px;right:8px;z-index:20;pointer-events:none;
+  font-size:.55em;color:#555;letter-spacing:1px;display:none}
+#viewer-count .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#0f0;margin-right:4px;animation:liveDot 2s infinite}
+@keyframes liveDot{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ═══ AUTO-DEMO ═══ */
+#demo-hint{position:fixed;bottom:50px;left:50%;transform:translateX(-50%);z-index:101;pointer-events:none;
+  font-size:.6em;color:#333;letter-spacing:2px;animation:pulse 2s infinite;display:none}
+
 /* Overlays */
 #vignette{position:fixed;inset:0;z-index:4;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.5) 100%)}
 #scanlines{position:fixed;inset:0;z-index:3;pointer-events:none;opacity:.03;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.3) 2px,rgba(0,0,0,.3) 4px)}
@@ -157,6 +189,8 @@ canvas{display:block;position:fixed;top:0;left:0}
 <div id="versus"></div>
 
 <canvas id="c"></canvas>
+<button id="mute-btn" title="Toggle Sound">🔊</button>
+<div id="viewer-count"><span class="dot"></span>LIVE</div>
 <div id="vignette"></div>
 <div id="scanlines"></div>
 
@@ -212,10 +246,14 @@ function resize() { W = innerWidth; H = innerHeight; cv.width = W; cv.height = H
 resize(); addEventListener('resize', resize);
 
 // ═══ AUDIO ═══
-let ac;
+let ac, muted = false;
 const initAudio = () => { ac = new (AudioContext || webkitAudioContext)(); };
+document.getElementById('mute-btn').addEventListener('click', () => {
+  muted = !muted;
+  document.getElementById('mute-btn').textContent = muted ? '🔇' : '🔊';
+});
 function snd(f, d, t = 'square', v = 0.08) {
-  if (!ac) return;
+  if (!ac || muted) return;
   const o = ac.createOscillator(), g = ac.createGain();
   o.type = t; o.frequency.setValueAtTime(f, ac.currentTime);
   g.gain.setValueAtTime(v, ac.currentTime);
@@ -1365,17 +1403,80 @@ function buildRoster(configs){
     `<div class="bot-chip" style="--c:${c.color}"><span class="bname" style="color:${c.color}">${c.name}</span><span class="btitle">${c.title||''}</span></div>`).join('');
 }
 
+// ═══ AUTO-DEMO (background fight behind intro) ═══
+let demoMode = false;
+function startDemo() {
+  if (botConfigs.length < 2) return;
+  demoMode = true;
+  gamePhase = 'fight';
+  // Pick 2 random bots
+  const idxs = [...Array(botConfigs.length).keys()];
+  for (let i = idxs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idxs[i], idxs[j]] = [idxs[j], idxs[i]]; }
+  genMap(); initPickups(); initBoss();
+  bots = [makeBot(botConfigs[idxs[0]], 6 * TILE, MH * TILE / 2), makeBot(botConfigs[idxs[1]], (MW - 6) * TILE, MH * TILE / 2)];
+  bots[0].angle = 0; bots[1].angle = Math.PI;
+  projs = []; parts = []; beams = []; roundKills = [0, 0]; bossKills = [0, 0]; gameTime = 0; shake = 0; specIdx = 0; freeCam = false;
+  document.getElementById('viewer-count').style.display = 'block';
+  lt = performance.now();
+  requestAnimationFrame(demoLoop);
+}
+
+function demoLoop(t) {
+  if (!demoMode) return;
+  requestAnimationFrame(demoLoop);
+  const dt = Math.min((t - lt) / 1000, 0.05); lt = t;
+  gameTime += dt;
+  bots.forEach(b => updateBot(b, dt)); updateBoss(dt);
+  // Simplified projectile/particle update (same as main loop)
+  for (let i = projs.length - 1; i >= 0; i--) { const p = projs[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+    if (p.isRocket && Math.random() < 0.5) parts.push({ x: p.x + (Math.random() - 0.5) * 3, y: p.y + (Math.random() - 0.5) * 3, vx: (Math.random() - 0.5) * 25, vy: (Math.random() - 0.5) * 25, color: '#ff4400', size: 1.5 + Math.random(), life: 0.25, maxLife: 0.25, grav: 0, bounce: false });
+    let hit = false;
+    if (solid(Math.floor(p.x / TILE), Math.floor(p.y / TILE))) { hit = true; if (p.splash) explosion(p.x, p.y, p.splash, p.splashDmg, p.owner); }
+    if (!hit) { for (const b of bots) { if (b === p.owner || !b.alive) continue; if (Math.hypot(b.x - p.x, b.y - p.y) < b.r + p.size) { hit = true;
+      if (p.splash) explosion(p.x, p.y, p.splash, p.splashDmg, p.owner); else { hurtBot(b, p.dmg, p.owner); spawnP(b.x, b.y, 5, '#ff0000', 80, 2, 0.2); } break; } } }
+    if (!hit && boss && boss.alive && !p.isBossBubble) { if (Math.hypot(boss.x - p.x, boss.y - p.y) < boss.r + p.size) { hit = true;
+      if (p.splash) explosion(p.x, p.y, p.splash, p.splashDmg, p.owner); else hurtBoss(p.dmg, p.owner); } }
+    if (hit || p.life <= 0) projs.splice(i, 1);
+  }
+  for (let i = parts.length - 1; i >= 0; i--) { const p = parts[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+    if (p.grav) p.vy += p.grav * dt; p.vx *= 0.97; p.vy *= 0.97; if (p.life <= 0) parts.splice(i, 1); }
+  for (let i = beams.length - 1; i >= 0; i--) { beams[i].life -= dt; if (beams[i].life <= 0) beams.splice(i, 1); }
+  pickups.forEach(p => { if (!p.active) { p.timer -= dt; if (p.timer <= 0) p.active = true; } });
+  shake *= 0.9;
+  // Auto camera — slowly track action
+  const cx = (bots[0].x + bots[1].x) / 2, cy = (bots[0].y + bots[1].y) / 2;
+  cam.tx = cx - W / 2; cam.ty = cy - H / 2;
+  cam.x += (cam.tx - cam.x) * 0.04; cam.y += (cam.ty - cam.y) * 0.04;
+  cam.x = Math.max(0, Math.min(MW * TILE - W, cam.x)); cam.y = Math.max(0, Math.min(MH * TILE - H, cam.y));
+  // Render
+  ctx.clearRect(0, 0, W, H); drawMap(); drawPickups(); parts.forEach(p => drawPart(p)); beams.forEach(b => drawBeam(b));
+  projs.forEach(p => drawProj(p)); [...bots].sort((a, b) => a.y - b.y).forEach(b => drawBot(b)); drawBoss();
+  // Restart demo if round ends
+  if (roundKills[0] >= 5 || roundKills[1] >= 5 || gameTime > 60) {
+    const idxs = [...Array(botConfigs.length).keys()];
+    for (let i = idxs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idxs[i], idxs[j]] = [idxs[j], idxs[i]]; }
+    genMap(); initPickups(); initBoss();
+    bots = [makeBot(botConfigs[idxs[0]], 6 * TILE, MH * TILE / 2), makeBot(botConfigs[idxs[1]], (MW - 6) * TILE, MH * TILE / 2)];
+    bots[0].angle = 0; bots[1].angle = Math.PI;
+    projs = []; parts = []; beams = []; roundKills = [0, 0]; bossKills = [0, 0]; gameTime = 0;
+  }
+}
+
 async function boot(){
   botConfigs=await loadBotConfigs();buildRoster(botConfigs);renderLeaderboard(botConfigs);
   document.getElementById('bot-count').textContent=`${botConfigs.length} FIGHTER${botConfigs.length!==1?'S':''} REGISTERED`;
   document.getElementById('lb-toggle').addEventListener('click',()=>{
     if(confirm('Reset all leaderboard stats?')){localStorage.removeItem(LB_KEY);renderLeaderboard(botConfigs);}});
+  // Start background demo
+  startDemo();
   if(botConfigs.length<2){
     const btn=document.getElementById('startBtn');btn.textContent='WAITING FOR FIGHTERS...';
     btn.style.borderColor='#555';btn.style.color='#555';btn.style.cursor='not-allowed';
     document.getElementById('need-bots').style.display='block';return;}
   document.getElementById('startBtn').addEventListener('click',()=>{
-    initAudio();document.getElementById('intro').classList.add('hidden');
+    initAudio(); demoMode=false;
+    document.getElementById('intro').classList.add('hidden');
+    document.getElementById('viewer-count').style.display='none';
     setTimeout(()=>document.getElementById('intro').style.display='none',1000);
     startTournament();requestAnimationFrame(loop);});
 }
