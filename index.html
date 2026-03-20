@@ -294,21 +294,58 @@ const WPN_MAP = { rocket:0, railgun:1, shotgun:2, lightning:3 };
 
 // ═══ MAP ═══
 const TILE = 28, MW = 40, MH = 30;
-let map = [];
+let map = [], arenaIdx = 0, hazards = [], dmgPopups = [];
+const ARENA_NAMES = ['THE CAGE','CRUCIBLE','LABYRINTH','COLOSSEUM'];
+const ARENA_COLORS = ['#0ff','#ff4400','#aa00ff','#ffaa00'];
+
 function genMap() {
-  map = [];
+  map = []; hazards = [];
   for (let y = 0; y < MH; y++) { map[y] = []; for (let x = 0; x < MW; x++) map[y][x] = (x===0||x===MW-1||y===0||y===MH-1)?1:0; }
   const box = (bx,by,bw,bh) => { for(let y=by;y<by+bh&&y<MH;y++) for(let x=bx;x<bx+bw&&x<MW;x++) if(y>=0&&x>=0) map[y][x]=1; };
-  // Center pillars
-  box(19,13,2,2); box(19,15,2,2);
-  // Corner cover
-  box(5,4,2,2); box(MW-7,4,2,2); box(5,MH-6,2,2); box(MW-7,MH-6,2,2);
-  // Side walls
-  box(10,8,4,1); box(MW-14,8,4,1); box(10,MH-9,4,1); box(MW-14,MH-9,4,1);
-  // Flanking pillars
-  box(14,12,1,2); box(MW-15,12,1,2); box(14,MH-14,1,2); box(MW-15,MH-14,1,2);
-  // Small cover
-  box(8,14,1,2); box(MW-9,14,1,2);
+
+  if(arenaIdx===0){
+    // THE CAGE — classic symmetric
+    box(19,13,2,2); box(19,15,2,2);
+    box(5,4,2,2); box(MW-7,4,2,2); box(5,MH-6,2,2); box(MW-7,MH-6,2,2);
+    box(10,8,4,1); box(MW-14,8,4,1); box(10,MH-9,4,1); box(MW-14,MH-9,4,1);
+    box(14,12,1,2); box(MW-15,12,1,2); box(14,MH-14,1,2); box(MW-15,MH-14,1,2);
+    box(8,14,1,2); box(MW-9,14,1,2);
+  } else if(arenaIdx===1){
+    // CRUCIBLE — cross-shaped corridors with lava pits
+    box(12,1,1,12); box(MW-13,1,1,12); box(12,MH-13,1,12); box(MW-13,MH-13,1,12);
+    box(1,10,10,1); box(MW-11,10,10,1); box(1,MH-11,10,1); box(MW-11,MH-11,10,1);
+    box(19,14,2,2);
+    box(6,6,2,2); box(MW-8,6,2,2); box(6,MH-8,2,2); box(MW-8,MH-8,2,2);
+    // Lava pits
+    hazards.push({type:'lava',x:16*TILE,y:5*TILE,r:45,dmg:12});
+    hazards.push({type:'lava',x:(MW-17)*TILE,y:5*TILE,r:45,dmg:12});
+    hazards.push({type:'lava',x:16*TILE,y:(MH-6)*TILE,r:45,dmg:12});
+    hazards.push({type:'lava',x:(MW-17)*TILE,y:(MH-6)*TILE,r:45,dmg:12});
+  } else if(arenaIdx===2){
+    // LABYRINTH — tight corridors, many walls
+    for(let i=3;i<MW-3;i+=4){ box(i,4,1,4); box(i,MH-8,1,4); }
+    for(let i=5;i<MW-5;i+=4){ box(i,9,1,3); box(i,MH-12,1,3); }
+    box(18,12,4,1); box(18,MH-13,4,1);
+    box(10,14,1,2); box(MW-11,14,1,2);
+    box(5,14,2,2); box(MW-7,14,2,2);
+    // Electric zones in corridors
+    hazards.push({type:'electric',x:20*TILE,y:8*TILE,r:35,dmg:8});
+    hazards.push({type:'electric',x:20*TILE,y:(MH-9)*TILE,r:35,dmg:8});
+  } else {
+    // COLOSSEUM — open center, ring of pillars
+    const cx=MW/2,cy=MH/2;
+    for(let i=0;i<8;i++){
+      const a=i*Math.PI/4, px=Math.round(cx+Math.cos(a)*8), py=Math.round(cy+Math.sin(a)*6);
+      box(px,py,2,2);
+    }
+    box(5,5,3,1); box(MW-8,5,3,1); box(5,MH-6,3,1); box(MW-8,MH-6,3,1);
+    box(3,13,1,4); box(MW-4,13,1,4);
+    // Center lava ring
+    hazards.push({type:'lava',x:cx*TILE,y:cy*TILE,r:30,dmg:15});
+    // Corner electric
+    hazards.push({type:'electric',x:5*TILE,y:5*TILE,r:40,dmg:6});
+    hazards.push({type:'electric',x:(MW-5)*TILE,y:(MH-5)*TILE,r:40,dmg:6});
+  }
 }
 
 // ═══ PICKUPS ═══
@@ -359,6 +396,86 @@ function moveEnt(e,dx,dy,dt) {
 function spawnP(x,y,n,color,speed,size,life) {
   for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=Math.random()*speed;
     parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color,size:size*(0.5+Math.random()),life,maxLife:life,grav:0,bounce:false});}
+}
+
+// ═══ DAMAGE POPUPS ═══
+function spawnDmgPopup(x,y,dmg,color){
+  dmgPopups.push({x:x+(Math.random()-0.5)*10,y,vy:-60-Math.random()*30,text:Math.round(dmg).toString(),color,life:0.9,maxLife:0.9,size:dmg>40?16:dmg>20?13:10});
+}
+
+// ═══ KILL STREAKS ═══
+let streaks = [0,0];
+const STREAK_NAMES = ['','','DOUBLE KILL','TRIPLE KILL','MEGA KILL','UNSTOPPABLE','GODLIKE'];
+function recordStreak(killerIdx){
+  streaks[killerIdx]++;
+  const s = streaks[killerIdx];
+  if(s>=2&&s<STREAK_NAMES.length){
+    const b = bots[killerIdx];
+    announceText=STREAK_NAMES[s]+'!';announceTimer=2.5;announceColor=b.color;
+    spawnP(b.x,b.y,20,b.color,180,4,0.8);
+    shake=Math.max(shake,0.2+s*0.08);
+    if(s>=4) beams.push({x1:b.x,y1:b.y,x2:b.x,y2:b.y,color:b.color,width:60+s*15,life:0.25,maxLife:0.25,isFlash:true});
+  }
+}
+
+// ═══ HAZARD UPDATE ═══
+function updateHazards(dt){
+  const t=performance.now()*0.001;
+  hazards.forEach(h=>{
+    bots.forEach(b=>{
+      if(!b.alive)return;
+      if(Math.hypot(b.x-h.x,b.y-h.y)<h.r+b.r){
+        const d=h.dmg*dt;
+        hurtBot(b,d,null);
+        if(Math.random()<0.3){
+          if(h.type==='lava') parts.push({x:b.x+(Math.random()-0.5)*8,y:b.y-Math.random()*12,vx:(Math.random()-0.5)*20,vy:-30-Math.random()*40,color:'#ff4400',size:2,life:0.3,maxLife:0.3,grav:-30,bounce:false});
+          else parts.push({x:b.x+(Math.random()-0.5)*10,y:b.y+(Math.random()-0.5)*10,vx:(Math.random()-0.5)*40,vy:(Math.random()-0.5)*40,color:'#8866ff',size:1.5,life:0.2,maxLife:0.2,grav:0,bounce:false});
+        }
+      }
+    });
+  });
+}
+
+function drawHazards(){
+  const t=performance.now()*0.001;
+  hazards.forEach(h=>{
+    const sx=h.x-cam.x,sy=h.y-cam.y;
+    if(sx<-100||sx>W+100||sy<-100||sy>H+100)return;
+    if(h.type==='lava'){
+      const g=ctx.createRadialGradient(sx,sy,0,sx,sy,h.r);
+      g.addColorStop(0,'rgba(255,68,0,0.35)');g.addColorStop(0.5,'rgba(255,30,0,0.2)');g.addColorStop(1,'rgba(255,0,0,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(sx,sy,h.r,0,Math.PI*2);ctx.fill();
+      // Bubbling
+      for(let i=0;i<3;i++){const ba=t*1.5+i*2.1,bx=sx+Math.cos(ba)*h.r*0.4,by=sy+Math.sin(ba)*h.r*0.4;
+        ctx.fillStyle=`rgba(255,${100+Math.sin(t*3+i)*50|0},0,${0.3+Math.sin(t*4+i)*0.15})`;
+        ctx.beginPath();ctx.arc(bx,by-Math.abs(Math.sin(t*5+i))*5,2+Math.sin(t*3+i),0,Math.PI*2);ctx.fill();}
+    } else {
+      // Electric zone
+      ctx.globalAlpha=0.1+Math.sin(t*6)*0.05;
+      ctx.strokeStyle='#8866ff';ctx.lineWidth=1;
+      for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(sx,sy,h.r*(0.5+i*0.2),0,Math.PI*2);ctx.stroke();}
+      // Lightning arcs
+      if(Math.random()<0.15){
+        ctx.globalAlpha=0.6;ctx.strokeStyle='#aa88ff';ctx.lineWidth=1.5;ctx.beginPath();
+        const a1=Math.random()*Math.PI*2,a2=a1+Math.PI*(0.5+Math.random());
+        let px=sx+Math.cos(a1)*h.r*0.8,py=sy+Math.sin(a1)*h.r*0.8;ctx.moveTo(px,py);
+        for(let j=0;j<4;j++){px+=(Math.random()-0.5)*20;py+=(Math.random()-0.5)*20;ctx.lineTo(px,py);}
+        ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+    }
+  });
+}
+
+function drawDmgPopups(dt){
+  for(let i=dmgPopups.length-1;i>=0;i--){
+    const p=dmgPopups[i]; p.y+=p.vy*dt; p.life-=dt;
+    if(p.life<=0){dmgPopups.splice(i,1);continue;}
+    const sx=p.x-cam.x,sy=p.y-cam.y,a=p.life/p.maxLife;
+    ctx.globalAlpha=a;ctx.font=`bold ${p.size}px Orbitron,sans-serif`;ctx.textAlign='center';
+    ctx.fillStyle=p.color;ctx.shadowColor=p.color;ctx.shadowBlur=4;
+    ctx.fillText(p.text,sx,sy);ctx.shadowBlur=0;ctx.globalAlpha=1;
+  }
 }
 
 // ═══ LEADERBOARD (persistent) ═══
@@ -487,17 +604,21 @@ function hurtBot(bot, dmg, attacker) {
   let d=dmg;
   if(bot.armor>0){const ab=Math.min(bot.armor,d*0.6);bot.armor-=ab;d-=ab*0.4;}
   bot.hp -= d;
+  if(d>3) spawnDmgPopup(bot.x,bot.y,d,attacker?attacker.color:'#ff4444');
   if(bot.hp<=0){
     bot.hp=0; bot.alive=false; bot.respawnT=3;
     if(attacker&&attacker!==bot){
-      const idx=bots.indexOf(attacker); if(idx>=0) roundKills[idx]++;
+      const idx=bots.indexOf(attacker); if(idx>=0){ roundKills[idx]++; recordStreak(idx); }
+      const otherIdx=bots.indexOf(bot); if(otherIdx>=0) streaks[otherIdx]=0;
       const t=attacker.taunts[Math.floor(Math.random()*attacker.taunts.length)];
-      if(Math.random()<0.5){announceText=`${attacker.name}: "${t}"`;announceTimer=2;announceColor=attacker.color;}
+      if(Math.random()<0.5&&streaks[bots.indexOf(attacker)]<2){announceText=`${attacker.name}: "${t}"`;announceTimer=2;announceColor=attacker.color;}
     }
     addKill(attacker?attacker.name:'?', bot.name, attacker?attacker.color:'#888');
     sndDie(); spawnP(bot.x,bot.y,25,bot.color,200,4,0.9); spawnP(bot.x,bot.y,12,'#ff0000',160,3,0.6);
     for(let i=0;i<6;i++){const a=Math.random()*Math.PI*2,sp=80+Math.random()*140;
       parts.push({x:bot.x,y:bot.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color:bot.color,size:3+Math.random()*4,life:1.2,maxLife:1.2,grav:180,bounce:true});}
+    // Death flash
+    beams.push({x1:bot.x,y1:bot.y,x2:bot.x,y2:bot.y,color:bot.color,width:40,life:0.15,maxLife:0.15,isFlash:true});
   }
 }
 
@@ -569,6 +690,7 @@ function hurtBoss(dmg,attacker){
   if(!boss||!boss.alive)return;
   if(boss.phased) dmg*=0.3; // Serpent phase reduces damage
   boss.hp-=dmg; boss.flashTimer=0.08; shake=Math.max(shake,0.1);
+  if(dmg>5) spawnDmgPopup(boss.x,boss.y,dmg,attacker?attacker.color:'#ffaa00');
   if(boss.hp<=0){
     const bt=BOSS_TYPES[bossTypeIdx];
     boss.hp=0;boss.alive=false;boss.respawnT=20;
@@ -1500,7 +1622,8 @@ function showVersusScreen(cfg1,cfg2,matchNum,totalMatches){
       </div>
     </div>
     <div class="vs-slash"></div>
-    <div class="vs-boss-warn">${BOSS_TYPES[(matchNum-1)%BOSS_TYPES.length].icon} ${BOSS_TYPES[(matchNum-1)%BOSS_TYPES.length].name} WILL HUNT BOTH FIGHTERS</div>`;
+    <div class="vs-boss-warn">${BOSS_TYPES[(matchNum-1)%BOSS_TYPES.length].icon} ${BOSS_TYPES[(matchNum-1)%BOSS_TYPES.length].name} WILL HUNT BOTH FIGHTERS</div>
+    <div style="position:absolute;bottom:8%;font-family:'Orbitron',sans-serif;font-size:.6em;color:${ARENA_COLORS[(matchNum-1)%ARENA_NAMES.length]};letter-spacing:3px;z-index:3;opacity:0;animation:vsBoss 0.5s ease-out forwards;animation-delay:1s">ARENA: ${ARENA_NAMES[(matchNum-1)%ARENA_NAMES.length]}</div>`;
   sndVS();
   // Draw fighter shapes on mini canvases
   drawMiniBot('vf-canvas-l',cfg1);
@@ -1534,12 +1657,13 @@ function startFight(){
   gamePhase='fight';
   document.getElementById('hud').style.display='block';
   const [i,j]=matchups[currentMatch];
+  arenaIdx=currentMatch%ARENA_NAMES.length;
   genMap();initPickups();initBoss();
   bots=[makeBot(botConfigs[i],6*TILE,MH*TILE/2), makeBot(botConfigs[j],(MW-6)*TILE,MH*TILE/2)];
   bots[0].angle=0;bots[1].angle=Math.PI;
-  projs=[];parts=[];beams=[];roundKills=[0,0];bossKills=[0,0];gameTime=0;shake=0;specIdx=0;freeCam=false;
-  announceText='FIGHT!';announceTimer=2;announceColor='#0ff';
-  document.getElementById('round-info').textContent=`MATCH ${currentMatch+1} OF ${matchups.length}`;
+  projs=[];parts=[];beams=[];dmgPopups=[];roundKills=[0,0];bossKills=[0,0];streaks=[0,0];gameTime=0;shake=0;specIdx=0;freeCam=false;
+  announceText=ARENA_NAMES[arenaIdx]+' — FIGHT!';announceTimer=2.5;announceColor=ARENA_COLORS[arenaIdx];
+  document.getElementById('round-info').textContent=`MATCH ${currentMatch+1} OF ${matchups.length} · ${ARENA_NAMES[arenaIdx]}`;
   document.getElementById('kill-feed').innerHTML='';
   lt=performance.now();
 }
@@ -1621,7 +1745,7 @@ function loop(t){
   const dt=Math.min((t-lt)/1000,0.05);lt=t;
   if(gamePhase!=='fight')return;
   gameTime+=dt;
-  bots.forEach(b=>updateBot(b,dt)); updateBoss(dt);
+  bots.forEach(b=>updateBot(b,dt)); updateBoss(dt); updateHazards(dt);
   // Projectiles
   for(let i=projs.length-1;i>=0;i--){const p=projs[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;
     if(p.isRocket&&Math.random()<0.5)parts.push({x:p.x+(Math.random()-0.5)*3,y:p.y+(Math.random()-0.5)*3,vx:(Math.random()-0.5)*25,vy:(Math.random()-0.5)*25,color:'#ff4400',size:1.5+Math.random(),life:0.25,maxLife:0.25,grav:0,bounce:false});
@@ -1640,8 +1764,8 @@ function loop(t){
   if(announceTimer>0)announceTimer-=dt; shake*=0.9;
   updateCamera(dt);
   // Render
-  ctx.clearRect(0,0,W,H);drawMap();drawPickups();parts.forEach(p=>drawPart(p));beams.forEach(b=>drawBeam(b));
-  projs.forEach(p=>drawProj(p));[...bots].sort((a,b)=>a.y-b.y).forEach(b=>drawBot(b));drawBoss();
+  ctx.clearRect(0,0,W,H);drawMap();drawHazards();drawPickups();parts.forEach(p=>drawPart(p));beams.forEach(b=>drawBeam(b));
+  projs.forEach(p=>drawProj(p));[...bots].sort((a,b)=>a.y-b.y).forEach(b=>drawBot(b));drawBoss();drawDmgPopups(dt);
   // HUD
   const tm=Math.floor(gameTime/60),ts=Math.floor(gameTime%60);
   document.getElementById('timer').textContent=`${tm}:${ts.toString().padStart(2,'0')}`;
@@ -1667,6 +1791,7 @@ function startDemo() {
   // Pick 2 random bots
   const idxs = [...Array(botConfigs.length).keys()];
   for (let i = idxs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idxs[i], idxs[j]] = [idxs[j], idxs[i]]; }
+  arenaIdx = Math.floor(Math.random() * ARENA_NAMES.length);
   genMap(); initPickups(); initBoss();
   bots = [makeBot(botConfigs[idxs[0]], 6 * TILE, MH * TILE / 2), makeBot(botConfigs[idxs[1]], (MW - 6) * TILE, MH * TILE / 2)];
   bots[0].angle = 0; bots[1].angle = Math.PI;
@@ -1681,7 +1806,7 @@ function demoLoop(t) {
   requestAnimationFrame(demoLoop);
   const dt = Math.min((t - lt) / 1000, 0.05); lt = t;
   gameTime += dt;
-  bots.forEach(b => updateBot(b, dt)); updateBoss(dt);
+  bots.forEach(b => updateBot(b, dt)); updateBoss(dt); updateHazards(dt);
   // Simplified projectile/particle update (same as main loop)
   for (let i = projs.length - 1; i >= 0; i--) { const p = projs[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
     if (p.isRocket && Math.random() < 0.5) parts.push({ x: p.x + (Math.random() - 0.5) * 3, y: p.y + (Math.random() - 0.5) * 3, vx: (Math.random() - 0.5) * 25, vy: (Math.random() - 0.5) * 25, color: '#ff4400', size: 1.5 + Math.random(), life: 0.25, maxLife: 0.25, grav: 0, bounce: false });
@@ -1704,12 +1829,13 @@ function demoLoop(t) {
   cam.x += (cam.tx - cam.x) * 0.04; cam.y += (cam.ty - cam.y) * 0.04;
   cam.x = Math.max(0, Math.min(MW * TILE - W, cam.x)); cam.y = Math.max(0, Math.min(MH * TILE - H, cam.y));
   // Render
-  ctx.clearRect(0, 0, W, H); drawMap(); drawPickups(); parts.forEach(p => drawPart(p)); beams.forEach(b => drawBeam(b));
-  projs.forEach(p => drawProj(p)); [...bots].sort((a, b) => a.y - b.y).forEach(b => drawBot(b)); drawBoss();
+  ctx.clearRect(0, 0, W, H); drawMap(); drawHazards(); drawPickups(); parts.forEach(p => drawPart(p)); beams.forEach(b => drawBeam(b));
+  projs.forEach(p => drawProj(p)); [...bots].sort((a, b) => a.y - b.y).forEach(b => drawBot(b)); drawBoss(); drawDmgPopups(dt);
   // Restart demo if round ends
   if (roundKills[0] >= 5 || roundKills[1] >= 5 || gameTime > 60) {
     const idxs = [...Array(botConfigs.length).keys()];
     for (let i = idxs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idxs[i], idxs[j]] = [idxs[j], idxs[i]]; }
+    arenaIdx = Math.floor(Math.random() * ARENA_NAMES.length);
     genMap(); initPickups(); initBoss();
     bots = [makeBot(botConfigs[idxs[0]], 6 * TILE, MH * TILE / 2), makeBot(botConfigs[idxs[1]], (MW - 6) * TILE, MH * TILE / 2)];
     bots[0].angle = 0; bots[1].angle = Math.PI;
