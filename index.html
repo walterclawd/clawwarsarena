@@ -69,6 +69,13 @@ canvas{display:block;position:fixed;top:0;left:0}
 .vs-boss-warn{position:absolute;bottom:15%;font-size:.7em;color:#ff4400;letter-spacing:2px;z-index:3;
   opacity:0;animation:vsBoss 0.5s ease-out forwards;animation-delay:0.8s}
 @keyframes vsBoss{to{opacity:1}}
+.vs-sparks{position:absolute;inset:0;overflow:hidden;z-index:1;pointer-events:none}
+.vs-spark{position:absolute;width:2px;height:2px;border-radius:50%;animation:vsSpark 1s ease-out forwards}
+@keyframes vsSpark{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-40px) scale(0)}}
+.vs-energy-bar{position:absolute;height:2px;opacity:0;animation:vsEnergy 0.8s ease-out forwards}
+@keyframes vsEnergy{0%{opacity:0;width:0}50%{opacity:0.8}100%{opacity:0;width:100%}}
+.vs-fighter-glow{position:absolute;width:120px;height:120px;border-radius:50%;filter:blur(40px);opacity:0;animation:vsFGlow 1.5s ease-in-out infinite;animation-delay:0.3s}
+@keyframes vsFGlow{0%,100%{opacity:0.2;transform:scale(1)}50%{opacity:0.5;transform:scale(1.3)}}
 
 /* ═══ HUD ═══ */
 #hud{position:fixed;inset:0;pointer-events:none;z-index:5;display:none}
@@ -373,6 +380,10 @@ let shake = 0, gameTime = 0, roundKills = [0,0], bossKills = [0,0];
 let announceText = '', announceTimer = 0, announceColor = '#ff0';
 let keys = {}, specIdx = 0, freeCam = false;
 let lt = 0;
+let countdownTimer = 0, countdownPhase = ''; // 'countdown' or ''
+let slowMoTimer = 0, slowMoScale = 1; // slow-mo on kills
+let autoSpecTimer = 0, autoSpecTarget = 0; // smart spectator cam
+let lastKillTime = 0; // for auto-spec switching
 
 // ═══ HELPERS ═══
 function hexToGlow(hex) {
@@ -615,10 +626,19 @@ function hurtBot(bot, dmg, attacker) {
     }
     addKill(attacker?attacker.name:'?', bot.name, attacker?attacker.color:'#888');
     sndDie(); spawnP(bot.x,bot.y,25,bot.color,200,4,0.9); spawnP(bot.x,bot.y,12,'#ff0000',160,3,0.6);
-    for(let i=0;i<6;i++){const a=Math.random()*Math.PI*2,sp=80+Math.random()*140;
-      parts.push({x:bot.x,y:bot.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color:bot.color,size:3+Math.random()*4,life:1.2,maxLife:1.2,grav:180,bounce:true});}
-    // Death flash
-    beams.push({x1:bot.x,y1:bot.y,x2:bot.x,y2:bot.y,color:bot.color,width:40,life:0.15,maxLife:0.15,isFlash:true});
+    // Enhanced death debris
+    for(let i=0;i<8;i++){const a=Math.random()*Math.PI*2,sp=80+Math.random()*180;
+      parts.push({x:bot.x,y:bot.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color:bot.color,size:3+Math.random()*5,life:1.5,maxLife:1.5,grav:180,bounce:true});}
+    // Skull/death symbol particles (expanding ring)
+    for(let i=0;i<12;i++){const a=i*Math.PI*2/12,sp=100+Math.random()*60;
+      parts.push({x:bot.x,y:bot.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color:'#ffffff',size:2,life:0.6,maxLife:0.6,grav:0,bounce:false});}
+    // Shockwave ring effect
+    for(let r=0;r<3;r++){
+      beams.push({x1:bot.x,y1:bot.y,x2:bot.x,y2:bot.y,color:bot.color,width:30+r*25,life:0.2+r*0.08,maxLife:0.2+r*0.08,isFlash:true});}
+    // Slow-mo on kill
+    triggerSlowMo(0.4);
+    lastKillTime=gameTime;
+    if(attacker){autoSpecTarget=bots.indexOf(attacker);autoSpecTimer=3;}
   }
 }
 
@@ -1150,12 +1170,55 @@ function updateBot(b,dt){
 // ═══ RENDERING ═══
 function drawMap(){
   const sx=Math.floor(cam.x/TILE),sy=Math.floor(cam.y/TILE),ex=Math.ceil((cam.x+W)/TILE),ey=Math.ceil((cam.y+H)/TILE);
+  const t=performance.now()*0.001;
+  // Arena-specific floor and wall colors
+  const arenaFloor=['#08080f','#0a0808','#08060f','#0a0a06'][arenaIdx];
+  const arenaGrid=['#0c0c16','#160c0c','#120c18','#14140c'][arenaIdx];
+  const arenaWall=['#181830','#301818','#281830','#302818'][arenaIdx];
+  const arenaWallFace=['#222244','#442222','#382244','#443822'][arenaIdx];
+  const arenaEdgeGlow=[
+    'rgba(0,255,255,0.06)','rgba(255,68,0,0.06)','rgba(170,0,255,0.06)','rgba(255,170,0,0.06)'
+  ][arenaIdx];
   for(let y=Math.max(0,sy);y<Math.min(MH,ey);y++) for(let x=Math.max(0,sx);x<Math.min(MW,ex);x++){
     const px=x*TILE-cam.x,py=y*TILE-cam.y;
-    if(map[y][x]===1){ctx.fillStyle='#181830';ctx.fillRect(px,py,TILE,TILE);ctx.fillStyle='#222244';ctx.fillRect(px+1,py+1,TILE-2,TILE-3);
-      if(y>0&&map[y-1][x]!==1){ctx.fillStyle='rgba(0,255,255,0.05)';ctx.fillRect(px,py,TILE,2);}
-      if(x>0&&map[y][x-1]!==1){ctx.fillStyle='rgba(0,255,255,0.05)';ctx.fillRect(px,py,2,TILE);}
-    } else {ctx.fillStyle='#08080f';ctx.fillRect(px,py,TILE,TILE);ctx.strokeStyle='#0c0c16';ctx.lineWidth=0.5;ctx.strokeRect(px,py,TILE,TILE);}
+    if(map[y][x]===1){
+      ctx.fillStyle=arenaWall;ctx.fillRect(px,py,TILE,TILE);
+      ctx.fillStyle=arenaWallFace;ctx.fillRect(px+1,py+1,TILE-2,TILE-3);
+      if(y>0&&map[y-1][x]!==1){ctx.fillStyle=arenaEdgeGlow;ctx.fillRect(px,py,TILE,2);}
+      if(x>0&&map[y][x-1]!==1){ctx.fillStyle=arenaEdgeGlow;ctx.fillRect(px,py,2,TILE);}
+    } else {
+      ctx.fillStyle=arenaFloor;ctx.fillRect(px,py,TILE,TILE);
+      ctx.strokeStyle=arenaGrid;ctx.lineWidth=0.5;ctx.strokeRect(px,py,TILE,TILE);
+    }
+  }
+  // Arena-specific ambient floor effects
+  drawArenaAmbient(t);
+}
+
+function drawArenaAmbient(t){
+  // Subtle animated center glow per arena
+  const cx=MW*TILE/2-cam.x, cy=MH*TILE/2-cam.y;
+  const col=ARENA_COLORS[arenaIdx];
+  const pulse=0.02+Math.sin(t*1.5)*0.01;
+  const g=ctx.createRadialGradient(cx,cy,20,cx,cy,200);
+  g.addColorStop(0,col.slice(0,-1)+','+pulse+')');g.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,200,0,Math.PI*2);ctx.fill();
+  // Subtle directional scan lines for Crucible
+  if(arenaIdx===1){
+    ctx.globalAlpha=0.015;ctx.fillStyle='#ff4400';
+    const scanY=(t*30%MH)*TILE-cam.y;
+    ctx.fillRect(0,scanY,W,3);ctx.globalAlpha=1;
+  }
+  // Floating motes for Labyrinth
+  if(arenaIdx===2&&Math.random()<0.03){
+    const mx=(Math.random()*MW*TILE)-cam.x,my=(Math.random()*MH*TILE)-cam.y;
+    if(mx>-20&&mx<W+20&&my>-20&&my<H+20){
+      ctx.fillStyle='rgba(170,0,255,0.15)';ctx.beginPath();ctx.arc(mx,my,1+Math.random()*2,0,Math.PI*2);ctx.fill();}
+  }
+  // Ember particles for Colosseum
+  if(arenaIdx===3&&Math.random()<0.02){
+    parts.push({x:Math.random()*MW*TILE,y:MH*TILE,vx:(Math.random()-0.5)*15,vy:-20-Math.random()*40,
+      color:Math.random()>0.5?'#ffaa00':'#ff4400',size:1+Math.random(),life:2+Math.random()*2,maxLife:4,grav:-10,bounce:false});
   }
 }
 
@@ -1554,10 +1617,84 @@ function drawPickups(){const t=performance.now()*0.001;pickups.forEach(p=>{if(!p
 function drawPart(p){const sx=p.x-cam.x,sy=p.y-cam.y;if(sx<-10||sx>W+10||sy<-10||sy>H+10)return;
   ctx.globalAlpha=Math.max(0,p.life/p.maxLife);ctx.fillStyle=p.color;ctx.fillRect(sx-p.size/2,sy-p.size/2,p.size,p.size);ctx.globalAlpha=1;}
 
+// ═══ COUNTDOWN ═══
+function updateCountdown(dt){
+  if(countdownPhase!=='countdown')return;
+  countdownTimer-=dt;
+  if(countdownTimer<=0){
+    countdownPhase='';
+    announceText='FIGHT!';announceTimer=1.5;announceColor='#ff0';
+    shake=0.3;sndBoom();
+    // Burst particles at center
+    const cx=(bots[0].x+bots[1].x)/2,cy=(bots[0].y+bots[1].y)/2;
+    spawnP(cx,cy,30,'#ffff00',250,4,0.8);spawnP(cx,cy,20,'#ff0000',200,3,0.6);
+    beams.push({x1:cx,y1:cy,x2:cx,y2:cy,color:'#ffff00',width:200,life:0.25,maxLife:0.25,isFlash:true});
+  }
+}
+function drawCountdown(){
+  if(countdownPhase!=='countdown')return;
+  const num=Math.ceil(countdownTimer);
+  const frac=countdownTimer-Math.floor(countdownTimer);
+  const scale=1+frac*1.5; // Shrinks as it ticks down
+  const alpha=Math.min(1,frac*2);
+  ctx.save();ctx.globalAlpha=alpha;
+  ctx.font=`900 ${Math.floor(80*scale)}px Orbitron,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+  const text=num>0?num.toString():'FIGHT!';
+  const color=num>2?'#ff4444':num>1?'#ffaa00':num>0?'#00ff44':'#ffff00';
+  ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=40;
+  ctx.fillText(text,W/2,H/2);
+  ctx.shadowBlur=20;ctx.fillText(text,W/2,H/2);
+  // Ring effect
+  const ringR=(1-frac)*150;
+  ctx.strokeStyle=color;ctx.lineWidth=3;ctx.globalAlpha=alpha*0.5;
+  ctx.beginPath();ctx.arc(W/2,H/2,ringR,0,Math.PI*2);ctx.stroke();
+  ctx.shadowBlur=0;ctx.globalAlpha=1;ctx.restore();
+  // Arena name during countdown
+  if(countdownTimer>1.5){
+    ctx.globalAlpha=Math.min(1,(countdownTimer-1.5)/0.5);
+    ctx.font='bold 16px Orbitron,sans-serif';ctx.textAlign='center';
+    ctx.fillStyle=ARENA_COLORS[arenaIdx];ctx.shadowColor=ARENA_COLORS[arenaIdx];ctx.shadowBlur=10;
+    ctx.fillText(ARENA_NAMES[arenaIdx],W/2,H/2+70);
+    ctx.shadowBlur=0;ctx.globalAlpha=1;
+  }
+}
+
+// ═══ SLOW-MO ═══
+function triggerSlowMo(duration){
+  slowMoTimer=duration;slowMoScale=0.2;
+}
+function updateSlowMo(dt){
+  if(slowMoTimer>0){slowMoTimer-=dt;if(slowMoTimer<=0){slowMoScale=1;}
+    else slowMoScale=0.2+0.8*Math.max(0,1-slowMoTimer/0.5);}
+}
+
+// ═══ SMART SPECTATOR CAM ═══
+function updateAutoSpec(dt){
+  if(freeCam)return;
+  autoSpecTimer-=dt;
+  // Auto-switch every 6 seconds or when a kill happens
+  if(autoSpecTimer<=0){autoSpecTimer=6;autoSpecTarget=1-autoSpecTarget;}
+  // Follow action — switch to the attacker on kills
+  if(gameTime-lastKillTime<0.5){
+    // Stay on the kill action briefly
+  }
+  // If boss is near a fighter, prefer that fighter
+  if(boss&&boss.alive){
+    for(let i=0;i<bots.length;i++){
+      if(!bots[i].alive)continue;
+      if(Math.hypot(bots[i].x-boss.x,bots[i].y-boss.y)<200){autoSpecTarget=i;break;}
+    }
+  }
+  specIdx=autoSpecTarget;
+}
+
 // ═══ CAMERA ═══
 function updateCamera(dt){
   if(freeCam){if(keys.KeyW)cam.ty-=300*dt;if(keys.KeyS)cam.ty+=300*dt;if(keys.KeyA)cam.tx-=300*dt;if(keys.KeyD)cam.tx+=300*dt;}
-  else{const b=bots[specIdx];if(b){cam.tx=b.x-W/2;cam.ty=b.y-H/2;}}
+  else{
+    updateAutoSpec(dt);
+    const b=bots[specIdx];if(b){cam.tx=b.x-W/2;cam.ty=b.y-H/2;}
+  }
   cam.x+=(cam.tx-cam.x)*0.08;cam.y+=(cam.ty-cam.y)*0.08;
   cam.x=Math.max(0,Math.min(MW*TILE-W,cam.x));cam.y=Math.max(0,Math.min(MH*TILE-H,cam.y));
   if(shake>0.01){cam.x+=(Math.random()-0.5)*shake*12;cam.y+=(Math.random()-0.5)*shake*12;}
@@ -1598,9 +1735,20 @@ function showVersusScreen(cfg1,cfg2,matchNum,totalMatches){
   gamePhase='versus';
   const el=document.getElementById('versus');
   el.style.display='flex';
+  // Generate spark positions
+  let sparksHTML='';
+  for(let i=0;i<20;i++){const x=30+Math.random()*40,y=20+Math.random()*60,d=Math.random()*0.8+0.3;
+    const c=Math.random()>0.5?cfg1.color:cfg2.color;
+    sparksHTML+=`<div class="vs-spark" style="left:${x}%;top:${y}%;background:${c};animation-delay:${d}s;box-shadow:0 0 6px ${c}"></div>`;}
+  // Energy bars across the screen
+  let energyHTML='';
+  for(let i=0;i<6;i++){const y=15+Math.random()*70,d=0.2+i*0.1,c=i%2===0?cfg1.color:cfg2.color;
+    energyHTML+=`<div class="vs-energy-bar" style="top:${y}%;left:0;background:linear-gradient(90deg,transparent,${c},transparent);animation-delay:${d}s"></div>`;}
   el.innerHTML=`<div id="vs-bg"></div>
+    <div class="vs-sparks">${sparksHTML}${energyHTML}</div>
     <div class="vs-round">MATCH ${matchNum} OF ${totalMatches}</div>
     <div class="vs-fighter left">
+      <div class="vs-fighter-glow" style="background:${cfg1.color};left:-20px;top:0"></div>
       <canvas class="vf-canvas" id="vf-canvas-l" width="80" height="80"></canvas>
       <div class="vf-name" style="color:${cfg1.color}">${cfg1.name}</div>
       <div class="vf-title">${cfg1.title||''}</div>
@@ -1612,6 +1760,7 @@ function showVersusScreen(cfg1,cfg2,matchNum,totalMatches){
     </div>
     <div class="vs-text">VS</div>
     <div class="vs-fighter right">
+      <div class="vs-fighter-glow" style="background:${cfg2.color};right:-20px;top:0"></div>
       <canvas class="vf-canvas" id="vf-canvas-r" width="80" height="80"></canvas>
       <div class="vf-name" style="color:${cfg2.color}">${cfg2.name}</div>
       <div class="vf-title">${cfg2.title||''}</div>
@@ -1662,7 +1811,10 @@ function startFight(){
   bots=[makeBot(botConfigs[i],6*TILE,MH*TILE/2), makeBot(botConfigs[j],(MW-6)*TILE,MH*TILE/2)];
   bots[0].angle=0;bots[1].angle=Math.PI;
   projs=[];parts=[];beams=[];dmgPopups=[];roundKills=[0,0];bossKills=[0,0];streaks=[0,0];gameTime=0;shake=0;specIdx=0;freeCam=false;
-  announceText=ARENA_NAMES[arenaIdx]+' — FIGHT!';announceTimer=2.5;announceColor=ARENA_COLORS[arenaIdx];
+  slowMoTimer=0;slowMoScale=1;autoSpecTimer=0;lastKillTime=0;
+  // Start countdown
+  countdownTimer=3.5;countdownPhase='countdown';
+  bots.forEach(b=>{b.invulnT=5;}); // Extra invuln during countdown
   document.getElementById('round-info').textContent=`MATCH ${currentMatch+1} OF ${matchups.length} · ${ARENA_NAMES[arenaIdx]}`;
   document.getElementById('kill-feed').innerHTML='';
   lt=performance.now();
@@ -1742,12 +1894,26 @@ function startTournament(){
 // ═══ GAME LOOP ═══
 function loop(t){
   requestAnimationFrame(loop);
-  const dt=Math.min((t-lt)/1000,0.05);lt=t;
+  let dt=Math.min((t-lt)/1000,0.05);lt=t;
   if(gamePhase!=='fight')return;
-  gameTime+=dt;
-  bots.forEach(b=>updateBot(b,dt)); updateBoss(dt); updateHazards(dt);
+  // Slow-mo effect
+  updateSlowMo(dt);
+  const gameDt=dt*slowMoScale;
+  // Countdown freeze — update camera but not game logic
+  updateCountdown(dt);
+  if(countdownPhase==='countdown'){
+    // During countdown, still render but don't run combat
+    updateCamera(dt);
+    ctx.clearRect(0,0,W,H);drawMap();drawHazards();drawPickups();
+    parts.forEach(p=>drawPart(p));beams.forEach(b=>drawBeam(b));
+    [...bots].sort((a,b2)=>a.y-b2.y).forEach(b=>drawBot(b));drawBoss();
+    drawCountdown();
+    return;
+  }
+  gameTime+=gameDt;
+  bots.forEach(b=>updateBot(b,gameDt)); updateBoss(gameDt); updateHazards(gameDt);
   // Projectiles
-  for(let i=projs.length-1;i>=0;i--){const p=projs[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;
+  for(let i=projs.length-1;i>=0;i--){const p=projs[i];p.x+=p.vx*gameDt;p.y+=p.vy*gameDt;p.life-=gameDt;
     if(p.isRocket&&Math.random()<0.5)parts.push({x:p.x+(Math.random()-0.5)*3,y:p.y+(Math.random()-0.5)*3,vx:(Math.random()-0.5)*25,vy:(Math.random()-0.5)*25,color:'#ff4400',size:1.5+Math.random(),life:0.25,maxLife:0.25,grav:0,bounce:false});
     let hit=false;if(solid(Math.floor(p.x/TILE),Math.floor(p.y/TILE))){hit=true;if(p.splash)explosion(p.x,p.y,p.splash,p.splashDmg,p.owner);}
     if(!hit){for(const b of bots){if(b===p.owner||!b.alive)continue;if(Math.hypot(b.x-p.x,b.y-p.y)<b.r+p.size){hit=true;
@@ -1756,16 +1922,21 @@ function loop(t){
       if(p.splash)explosion(p.x,p.y,p.splash,p.splashDmg,p.owner);else{hurtBoss(p.dmg,p.owner);spawnP(boss.x,boss.y,5,'#ff4400',80,2,0.2);sndHit();}}}
     if(hit||p.life<=0)projs.splice(i,1);}
   // Particles
-  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;
-    if(p.grav)p.vy+=p.grav*dt;if(p.bounce&&solid(Math.floor(p.x/TILE),Math.floor(p.y/TILE))){p.vx*=-0.6;p.vy*=-0.6;}
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx*gameDt;p.y+=p.vy*gameDt;p.life-=gameDt;
+    if(p.grav)p.vy+=p.grav*gameDt;if(p.bounce&&solid(Math.floor(p.x/TILE),Math.floor(p.y/TILE))){p.vx*=-0.6;p.vy*=-0.6;}
     p.vx*=0.97;p.vy*=0.97;if(p.life<=0)parts.splice(i,1);}
-  for(let i=beams.length-1;i>=0;i--){beams[i].life-=dt;if(beams[i].life<=0)beams.splice(i,1);}
-  pickups.forEach(p=>{if(!p.active){p.timer-=dt;if(p.timer<=0){p.active=true;sndPick();}}});
-  if(announceTimer>0)announceTimer-=dt; shake*=0.9;
+  for(let i=beams.length-1;i>=0;i--){beams[i].life-=gameDt;if(beams[i].life<=0)beams.splice(i,1);}
+  pickups.forEach(p=>{if(!p.active){p.timer-=gameDt;if(p.timer<=0){p.active=true;sndPick();}}});
+  if(announceTimer>0)announceTimer-=gameDt; shake*=0.9;
   updateCamera(dt);
   // Render
   ctx.clearRect(0,0,W,H);drawMap();drawHazards();drawPickups();parts.forEach(p=>drawPart(p));beams.forEach(b=>drawBeam(b));
-  projs.forEach(p=>drawProj(p));[...bots].sort((a,b)=>a.y-b.y).forEach(b=>drawBot(b));drawBoss();drawDmgPopups(dt);
+  projs.forEach(p=>drawProj(p));[...bots].sort((a,b)=>a.y-b.y).forEach(b=>drawBot(b));drawBoss();drawDmgPopups(gameDt);
+  // Slow-mo visual indicator
+  if(slowMoTimer>0){ctx.globalAlpha=0.08;ctx.fillStyle='#ffffff';ctx.fillRect(0,0,W,H);ctx.globalAlpha=1;
+    // Vignette intensifies during slow-mo
+    const sg=ctx.createRadialGradient(W/2,H/2,W*0.25,W/2,H/2,W*0.6);sg.addColorStop(0,'rgba(0,0,0,0)');sg.addColorStop(1,'rgba(0,0,0,0.3)');
+    ctx.fillStyle=sg;ctx.fillRect(0,0,W,H);}
   // HUD
   const tm=Math.floor(gameTime/60),ts=Math.floor(gameTime%60);
   document.getElementById('timer').textContent=`${tm}:${ts.toString().padStart(2,'0')}`;
