@@ -292,6 +292,11 @@ const sndPhoenixCry = () => { snd(600, 0.5, 'sine', 0.12); snd(900, 0.35, 'trian
 const sndLightningStrike = () => { snd(60, 0.3, 'sawtooth', 0.15); snd(2000, 0.05, 'square', 0.1); snd(40, 0.4, 'square', 0.08); };
 const sndFeatherShot = () => { snd(350, 0.06, 'triangle', 0.06); snd(500, 0.04, 'sine', 0.04); };
 const sndPhoenixRebirth = () => { snd(200, 0.8, 'sine', 0.15); snd(400, 0.6, 'triangle', 0.1); snd(600, 0.4, 'sine', 0.08); setTimeout(()=>{snd(800,0.5,'sine',0.12);snd(1000,0.3,'triangle',0.08);},200); };
+const sndGolemRoar = () => { snd(30, 0.7, 'sawtooth', 0.18); snd(22, 0.9, 'square', 0.14); snd(45, 0.5, 'triangle', 0.08); };
+const sndGroundPound = () => { snd(25, 0.5, 'sawtooth', 0.2); snd(18, 0.6, 'square', 0.15); snd(40, 0.35, 'triangle', 0.1); };
+const sndBoulderThrow = () => { snd(80, 0.2, 'sawtooth', 0.1); snd(55, 0.25, 'square', 0.07); snd(100, 0.15, 'triangle', 0.06); };
+const sndCrystalShatter = () => { snd(600, 0.08, 'square', 0.08); snd(900, 0.06, 'sine', 0.05); snd(1200, 0.04, 'triangle', 0.04); };
+const sndCrystalWall = () => { snd(150, 0.15, 'triangle', 0.07); snd(250, 0.1, 'sine', 0.05); };
 const sndVS = () => { snd(300, 0.15, 'sine', 0.1); snd(450, 0.12, 'sine', 0.08); setTimeout(()=>snd(600,0.2,'sine',0.1),100); };
 
 // ═══ WEAPONS ═══
@@ -673,6 +678,7 @@ const BOSS_TYPES = [
   { id:'serpent', name:'VOID SERPENT', icon:'🐍', color:'#00ff88', accentColor:'#00aa55', hpBase:700, hpScale:180, spdBase:85, spdScale:9, radius:42 },
   { id:'dragon', name:'INFERNO DRAGON', icon:'🐉', color:'#ff8800', accentColor:'#cc4400', hpBase:900, hpScale:220, spdBase:70, spdScale:7, radius:48 },
   { id:'phoenix', name:'STORM PHOENIX', icon:'🦅', color:'#ffdd00', accentColor:'#ff8800', hpBase:650, hpScale:160, spdBase:100, spdScale:12, radius:40 },
+  { id:'golem', name:'CRYSTAL GOLEM', icon:'💎', color:'#44ddff', accentColor:'#2288cc', hpBase:1100, hpScale:280, spdBase:50, spdScale:5, radius:52 },
 ];
 let bossTypeIdx = 0;
 
@@ -708,7 +714,14 @@ function initBoss() {
     swoopTimer:0, swooping:false, swoopTarget:null, swoopPhase:0,
     auraTimer:0, auraPulse:false, rebirthUsed:false, rebirthTriggered:false,
     stormTimer:0, storming:false, stormDuration:0, stormCenter:{x:0,y:0},
-    featherBarrage:false, barrageTimer:0
+    featherBarrage:false, barrageTimer:0,
+    // Golem-specific
+    groundPoundTimer:0, groundPounding:false, groundPoundPhase:0, groundPoundTarget:null,
+    boulderTimer:0, crystalWalls:[], crystalWallTimer:0,
+    shieldActive:false, shieldTimer:0, shieldHp:0,
+    slamTimer:0, slamming:false, slamTarget:null,
+    crystalShards:[], crystalShardTimer:0,
+    quakeRings:[], armorPlates:3
   };
   // Init serpent segments
   if(bt.id==='serpent'){
@@ -755,7 +768,7 @@ function hurtBoss(dmg,attacker){
     beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:bt.color,width:120,life:0.3,maxLife:0.3,isFlash:true});
     for(let i=0;i<10;i++){const a=Math.random()*Math.PI*2,sp=100+Math.random()*200;
       parts.push({x:boss.x,y:boss.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color:i%2?bt.color:bt.accentColor,size:5+Math.random()*5,life:2,maxLife:2,grav:120,bounce:true});}
-    boss.webTraps=[];boss.spiderlings=[];boss.venomPools=[];boss.fireTrails=[];
+    boss.webTraps=[];boss.spiderlings=[];boss.venomPools=[];boss.fireTrails=[];boss.crystalWalls=[];boss.crystalShards=[];boss.quakeRings=[];
     document.getElementById('boss-bar').style.display='none';
   } else {
     const fill=document.getElementById('boss-hp-fill');
@@ -776,6 +789,7 @@ function updateBoss(dt){
       if(bt.id==='serpent'){boss.segments=[];for(let i=0;i<boss.segCount;i++)boss.segments.push({x:spot.x-i*16,y:spot.y,angle:0});}
       if(bt.id==='dragon'){boss.fireTrails=[];}
       if(bt.id==='phoenix'){boss.lightningStrikes=[];boss.swooping=false;boss.storming=false;boss.rebirthUsed=false;boss.rebirthTriggered=false;boss.featherBarrage=false;}
+      if(bt.id==='golem'){boss.crystalWalls=[];boss.crystalShards=[];boss.quakeRings=[];boss.groundPounding=false;boss.slamming=false;boss.shieldActive=false;boss.armorPlates=3+boss.timesKilled;}
       announceText=`${bt.icon} BOSS RETURNS!`;announceTimer=2.5;announceColor=bt.color;sndBossRoar();
       spawnP(boss.x,boss.y,25,bt.color,200,5,1);
       document.getElementById('boss-bar').style.display='block';
@@ -791,6 +805,7 @@ function updateBoss(dt){
   else if(bt.id==='serpent') updateBossSerpent(dt);
   else if(bt.id==='dragon') updateBossDragon(dt);
   else if(bt.id==='phoenix') updateBossPhoenix(dt);
+  else if(bt.id==='golem') updateBossGolem(dt);
 
   // Ambient particles
   if(Math.random()<0.12){const pa=Math.random()*Math.PI*2;
@@ -1297,6 +1312,191 @@ function updateBossPhoenix(dt){
       size:1.5+Math.random()*1.5,life:1+Math.random(),maxLife:1.5,grav:40,bounce:false});}
 }
 
+// ═══ CRYSTAL GOLEM AI ═══
+function updateBossGolem(dt){
+  const spdM=boss.enraged?1.4:1, turnR=boss.enraged?2.5:1.8;
+  boss.roarTimer-=dt; if(boss.roarTimer<=0){boss.roarTimer=7+Math.random()*5;sndGolemRoar();shake=Math.max(shake,0.15);}
+
+  // Update quake rings (visual effect)
+  for(let i=boss.quakeRings.length-1;i>=0;i--){
+    boss.quakeRings[i].life-=dt;boss.quakeRings[i].r+=200*dt;
+    if(boss.quakeRings[i].life<=0)boss.quakeRings.splice(i,1);}
+
+  // Update crystal walls — they block movement and take damage
+  for(let i=boss.crystalWalls.length-1;i>=0;i--){
+    boss.crystalWalls[i].life-=dt;
+    if(boss.crystalWalls[i].life<=0){
+      sndCrystalShatter();const cw=boss.crystalWalls[i];
+      spawnP(cw.x,cw.y,10,'#44ddff',120,3,0.4);spawnP(cw.x,cw.y,6,'#2288cc',80,2,0.3);
+      boss.crystalWalls.splice(i,1);continue;}
+    // Crystal walls damage bots that touch them
+    const cw=boss.crystalWalls[i];
+    bots.forEach(b=>{if(!b.alive)return;if(Math.hypot(b.x-cw.x,b.y-cw.y)<cw.r+b.r){
+      hurtBot(b,(5+boss.timesKilled*2)*dt*6,null);
+      const ka=Math.atan2(b.y-cw.y,b.x-cw.x);b.x+=Math.cos(ka)*3;b.y+=Math.sin(ka)*3;}});
+  }
+
+  // Update crystal shards (orbiting projectiles)
+  for(let i=boss.crystalShards.length-1;i>=0;i--){
+    const cs=boss.crystalShards[i];cs.life-=dt;cs.orbitAngle+=cs.orbitSpeed*dt;
+    cs.x=boss.x+Math.cos(cs.orbitAngle)*cs.orbitR;
+    cs.y=boss.y+Math.sin(cs.orbitAngle)*cs.orbitR;
+    if(cs.life<=0||cs.launched){
+      if(cs.launched){cs.x+=cs.vx*dt;cs.y+=cs.vy*dt;cs.launchLife-=dt;
+        if(cs.launchLife<=0){boss.crystalShards.splice(i,1);continue;}
+        bots.forEach(b=>{if(!b.alive)return;if(Math.hypot(b.x-cs.x,b.y-cs.y)<b.r+8){
+          hurtBot(b,20+boss.timesKilled*4,null);spawnP(b.x,b.y,6,'#44ddff',80,2,0.3);sndHit();
+          boss.crystalShards.splice(i,1);}});
+      } else {boss.crystalShards.splice(i,1);}
+      continue;
+    }
+    // Orbiting shards damage bots on contact
+    bots.forEach(b=>{if(!b.alive)return;if(Math.hypot(b.x-cs.x,b.y-cs.y)<b.r+10){
+      hurtBot(b,8+boss.timesKilled*2,null);spawnP(b.x,b.y,4,'#44ddff',60,2,0.2);}});
+  }
+
+  // Shield mechanic — periodically raises a crystal shield that absorbs damage
+  if(boss.shieldActive){
+    boss.shieldTimer-=dt;if(boss.shieldTimer<=0||boss.shieldHp<=0){boss.shieldActive=false;
+      sndCrystalShatter();spawnP(boss.x,boss.y,15,'#44ddff',120,3,0.5);shake=0.15;}}
+
+  // Ground pound — raises up then slams down for area damage
+  if(boss.groundPounding){
+    boss.groundPoundPhase-=dt;
+    if(boss.groundPoundPhase<=0){
+      boss.groundPounding=false;sndGroundPound();shake=0.7;
+      // Area damage ring
+      const poundR=boss.enraged?180:140;
+      bots.forEach(b=>{if(!b.alive)return;const d=Math.hypot(b.x-boss.x,b.y-boss.y);
+        if(d<poundR){const fall=1-d/poundR;hurtBot(b,(50+boss.timesKilled*10)*fall,null);
+          spawnP(b.x,b.y,8,'#44ddff',130,3,0.4);
+          const ka=Math.atan2(b.y-boss.y,b.x-boss.x);b.x+=Math.cos(ka)*70*fall;b.y+=Math.sin(ka)*70*fall;}});
+      // Visual: expanding ring, debris
+      boss.quakeRings.push({x:boss.x,y:boss.y,r:20,maxR:poundR,life:0.6,maxLife:0.6});
+      beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:'#44ddff',width:poundR,life:0.2,maxLife:0.2,isFlash:true});
+      spawnP(boss.x,boss.y,25,'#44ddff',250,5,0.8);spawnP(boss.x,boss.y,15,'#2288cc',200,4,0.6);
+      // Throw debris rocks
+      for(let i=0;i<8;i++){const a=i*Math.PI/4+Math.random()*0.3,sp=100+Math.random()*150;
+        parts.push({x:boss.x,y:boss.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color:i%2?'#44ddff':'#887766',size:4+Math.random()*4,life:1.5,maxLife:1.5,grav:200,bounce:true});}
+    }
+    // During windup, particles rise around boss
+    if(boss.groundPoundPhase>0){
+      for(let i=0;i<2;i++){const pa=Math.random()*Math.PI*2,pd=boss.r+Math.random()*20;
+        parts.push({x:boss.x+Math.cos(pa)*pd,y:boss.y+Math.sin(pa)*pd,vx:(Math.random()-0.5)*10,vy:-60-Math.random()*40,
+          color:'#887766',size:2+Math.random()*2,life:0.4,maxLife:0.4,grav:-50,bounce:false});}}
+    return;
+  }
+
+  // Slam attack — charges to a point and slams
+  if(boss.slamming&&boss.slamTarget){
+    const sdx=boss.slamTarget.x-boss.x,sdy=boss.slamTarget.y-boss.y,sd=Math.hypot(sdx,sdy);
+    if(sd>25){const sspd=boss.spd*3.5;boss.x+=sdx/sd*sspd*dt;boss.y+=sdy/sd*sspd*dt;
+      spawnP(boss.x,boss.y,1,'#887766',40,3,0.15);
+      // Leave crystal trail
+      if(Math.random()<0.15)boss.crystalWalls.push({x:boss.x+(Math.random()-0.5)*30,y:boss.y+(Math.random()-0.5)*30,life:5,r:12,hp:30});
+    } else {
+      boss.slamming=false;shake=0.5;sndGroundPound();
+      bots.forEach(b=>{if(!b.alive)return;if(Math.hypot(b.x-boss.x,b.y-boss.y)<boss.r+60){
+        hurtBot(b,55+boss.timesKilled*10,null);spawnP(b.x,b.y,10,'#44ddff',140,4,0.4);
+        const ka=Math.atan2(b.y-boss.y,b.x-boss.x);b.x+=Math.cos(ka)*60;b.y+=Math.sin(ka)*60;}});
+      beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:'#44ddff',width:90,life:0.15,maxLife:0.15,isFlash:true});
+      boss.quakeRings.push({x:boss.x,y:boss.y,r:15,maxR:100,life:0.4,maxLife:0.4});
+    }
+    return;
+  }
+
+  let nearBot=null,nearDist=Infinity;
+  bots.forEach(b=>{if(!b.alive)return;const d=Math.hypot(b.x-boss.x,b.y-boss.y);if(d<nearDist){nearDist=d;nearBot=b;}});
+  if(!nearBot)return;
+  const toBot=Math.atan2(nearBot.y-boss.y,nearBot.x-boss.x);
+  let diff=toBot-boss.angle;while(diff>Math.PI)diff-=Math.PI*2;while(diff<-Math.PI)diff+=Math.PI*2;
+  boss.angle+=diff*turnR*dt;
+  bossMove(spdM,dt);
+
+  // Melee punch
+  boss.attackTimer-=dt;
+  if(nearDist<boss.r+35&&boss.attackTimer<=0){boss.clawAnim=1;boss.attackTimer=boss.enraged?0.6:1;sndGolemRoar();shake=0.25;
+    bots.forEach(b=>{if(!b.alive)return;if(Math.hypot(b.x-boss.x,b.y-boss.y)<boss.r+45){
+      hurtBot(b,55+boss.timesKilled*10,null);spawnP(b.x,b.y,10,'#44ddff',140,4,0.3);
+      const ka=Math.atan2(b.y-boss.y,b.x-boss.x);b.x+=Math.cos(ka)*55;b.y+=Math.sin(ka)*55;}});}
+  if(boss.clawAnim>0){boss.clawAnim-=dt*3;if(boss.clawAnim<0)boss.clawAnim=0;}
+
+  // Ground pound
+  boss.groundPoundTimer-=dt;
+  if(boss.groundPoundTimer<=0&&nearDist<200){
+    boss.groundPounding=true;boss.groundPoundPhase=boss.enraged?0.5:0.8;
+    boss.groundPoundTimer=boss.enraged?5:8;sndGolemRoar();shake=0.2;
+    announceText='💎 GROUND POUND!';announceTimer=1.2;announceColor='#44ddff';}
+
+  // Boulder throw
+  boss.boulderTimer-=dt;
+  if(boss.boulderTimer<=0&&nearDist>boss.r+50){boss.boulderTimer=boss.enraged?1.5:2.5;sndBoulderThrow();
+    const count=boss.enraged?3:2;
+    for(let i=0;i<count;i++){const ba=boss.angle+(i-(count-1)/2)*0.25,bs=180+Math.random()*50;
+      projs.push({x:boss.x+Math.cos(boss.angle)*(boss.r+5),y:boss.y+Math.sin(boss.angle)*(boss.r+5),
+        vx:Math.cos(ba)*bs,vy:Math.sin(ba)*bs,dmg:25+boss.timesKilled*5,size:7,color:'#887766',
+        life:2.5,owner:null,splash:70,splashDmg:18+boss.timesKilled*4,isBossBubble:true,isRocket:true});}}
+
+  // Crystal wall placement — creates barriers
+  boss.crystalWallTimer-=dt;
+  if(boss.crystalWallTimer<=0&&boss.crystalWalls.length<(boss.enraged?5:3)){
+    boss.crystalWallTimer=boss.enraged?3:5;sndCrystalWall();
+    // Place walls between boss and nearest bot
+    const midX=(boss.x+nearBot.x)/2+(Math.random()-0.5)*40;
+    const midY=(boss.y+nearBot.y)/2+(Math.random()-0.5)*40;
+    boss.crystalWalls.push({x:midX,y:midY,life:10,r:20,hp:80});
+    spawnP(midX,midY,8,'#44ddff',80,3,0.4);spawnP(midX,midY,5,'#887766',60,2,0.3);}
+
+  // Crystal shield
+  boss.shieldTimer-=dt;
+  if(!boss.shieldActive&&boss.shieldTimer<=0&&boss.hp<boss.maxHp*0.6){
+    boss.shieldActive=true;boss.shieldHp=100+boss.timesKilled*30;boss.shieldTimer=boss.enraged?6:10;
+    sndCrystalWall();announceText='💎 CRYSTAL SHIELD!';announceTimer=1;announceColor='#44ddff';
+    spawnP(boss.x,boss.y,12,'#44ddff',100,3,0.4);}
+
+  // Orbiting crystal shards
+  boss.crystalShardTimer-=dt;
+  if(boss.crystalShardTimer<=0&&boss.crystalShards.length<(boss.enraged?6:4)){
+    boss.crystalShardTimer=boss.enraged?1.5:2.5;
+    const oa=Math.random()*Math.PI*2;
+    boss.crystalShards.push({x:boss.x,y:boss.y,orbitAngle:oa,orbitR:boss.r+15+Math.random()*20,
+      orbitSpeed:1.5+Math.random(),life:8,launched:false,vx:0,vy:0,launchLife:0});
+    sndCrystalShatter();}
+
+  // Launch orbiting shards at players
+  if(boss.crystalShards.length>=(boss.enraged?4:3)&&nearDist<250&&Math.random()<0.02){
+    boss.crystalShards.forEach(cs=>{if(cs.launched)return;
+      const sa=Math.atan2(nearBot.y-cs.y,nearBot.x-cs.x);
+      cs.launched=true;cs.vx=Math.cos(sa)*280;cs.vy=Math.sin(sa)*280;cs.launchLife=1.5;});
+    sndBoulderThrow();announceText='💎 SHARD VOLLEY!';announceTimer=1;announceColor='#44ddff';}
+
+  // Slam attack — charge to target
+  boss.slamTimer-=dt;
+  if(nearDist>160&&boss.slamTimer<=0&&Math.random()<0.012){
+    boss.slamming=true;boss.slamTarget={x:nearBot.x,y:nearBot.y};
+    boss.slamTimer=boss.enraged?5:9;sndGolemRoar();shake=0.2;
+    announceText='💎 CRYSTAL SLAM!';announceTimer=1.2;announceColor='#44ddff';}
+
+  // Ambient crystal particles
+  if(Math.random()<0.1){const pa=Math.random()*Math.PI*2,pd=boss.r+Math.random()*15;
+    parts.push({x:boss.x+Math.cos(pa)*pd,y:boss.y+Math.sin(pa)*pd,
+      vx:(Math.random()-0.5)*10,vy:-15-Math.random()*20,
+      color:Math.random()>0.5?'#44ddff':'#887766',size:1+Math.random()*1.5,life:0.6,maxLife:0.6,grav:-10,bounce:false});}
+}
+
+// Override hurtBoss for golem shield
+const _origHurtBoss = hurtBoss;
+hurtBoss = function(dmg, attacker) {
+  if(boss&&boss.alive&&BOSS_TYPES[bossTypeIdx].id==='golem'&&boss.shieldActive){
+    boss.shieldHp-=dmg;if(dmg>5)spawnDmgPopup(boss.x,boss.y-boss.r,dmg,'#44ddff');
+    boss.flashTimer=0.05;spawnP(boss.x+(Math.random()-0.5)*20,boss.y+(Math.random()-0.5)*20,3,'#44ddff',60,2,0.2);
+    if(boss.shieldHp<=0){boss.shieldActive=false;sndCrystalShatter();shake=0.2;
+      spawnP(boss.x,boss.y,20,'#44ddff',150,4,0.5);
+      announceText='💎 SHIELD BROKEN!';announceTimer=1.5;announceColor='#ff4444';}
+    return;}
+  _origHurtBoss(dmg, attacker);
+};
+
 // ═══ BOT AI ═══
 function updateBot(b,dt){
   if(!b.alive){b.respawnT-=dt;
@@ -1432,6 +1632,7 @@ function drawBoss(){
   else if(bt.id==='serpent') drawBossSerpent();
   else if(bt.id==='dragon') drawBossDragon();
   else if(bt.id==='phoenix') drawBossPhoenix();
+  else if(bt.id==='golem') drawBossGolem();
 }
 
 function drawBossLabel(sx,sy,R){
@@ -1940,6 +2141,171 @@ function drawBossPhoenix(){
     }
     ctx.globalAlpha=1;
   }
+
+  ctx.restore();
+  drawBossLabel(sx,sy,R);
+}
+
+// ═══ CRYSTAL GOLEM DRAWING ═══
+function drawBossGolem(){
+  const sx=boss.x-cam.x,sy=boss.y-cam.y;
+  if(sx<-200||sx>W+200||sy<-200||sy>H+200)return;
+  const t=performance.now()*0.001,R=boss.r,flash=boss.flashTimer>0,enr=boss.enraged;
+
+  // Draw quake rings
+  (boss.quakeRings||[]).forEach(qr=>{
+    const qx=qr.x-cam.x,qy=qr.y-cam.y,a=qr.life/qr.maxLife;
+    ctx.globalAlpha=a*0.5;ctx.strokeStyle='#44ddff';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(qx,qy,qr.r,0,Math.PI*2);ctx.stroke();
+    ctx.strokeStyle='#887766';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(qx,qy,qr.r*0.7,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=1;});
+
+  // Draw crystal walls
+  (boss.crystalWalls||[]).forEach(cw=>{
+    const cwx=cw.x-cam.x,cwy=cw.y-cam.y;
+    const la=Math.min(1,cw.life/2); // Fade out near end of life
+    ctx.globalAlpha=la;
+    // Crystal shape — hexagonal prism look
+    ctx.fillStyle=flash?'#fff':'#2288cc';ctx.shadowColor='#44ddff';ctx.shadowBlur=8;
+    ctx.beginPath();
+    for(let i=0;i<6;i++){const a=i*Math.PI/3+t*0.3;ctx.lineTo(cwx+Math.cos(a)*cw.r,cwy+Math.sin(a)*cw.r);}
+    ctx.closePath();ctx.fill();ctx.shadowBlur=0;
+    // Inner facets
+    ctx.strokeStyle='#44ddff';ctx.lineWidth=1;ctx.globalAlpha=la*0.4;
+    for(let i=0;i<3;i++){const a=i*Math.PI/3+t*0.3;
+      ctx.beginPath();ctx.moveTo(cwx,cwy);ctx.lineTo(cwx+Math.cos(a)*cw.r,cwy+Math.sin(a)*cw.r);ctx.stroke();}
+    // Glow
+    ctx.globalAlpha=la*0.15;const cg=ctx.createRadialGradient(cwx,cwy,0,cwx,cwy,cw.r*1.5);
+    cg.addColorStop(0,'#44ddff');cg.addColorStop(1,'rgba(68,221,255,0)');
+    ctx.fillStyle=cg;ctx.beginPath();ctx.arc(cwx,cwy,cw.r*1.5,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;});
+
+  // Draw orbiting crystal shards
+  (boss.crystalShards||[]).forEach(cs=>{
+    const csx=cs.x-cam.x,csy=cs.y-cam.y;
+    ctx.fillStyle=flash?'#fff':'#66eeff';ctx.shadowColor='#44ddff';ctx.shadowBlur=6;
+    ctx.save();ctx.translate(csx,csy);ctx.rotate(cs.orbitAngle*3);
+    ctx.beginPath();ctx.moveTo(0,-6);ctx.lineTo(4,0);ctx.lineTo(0,6);ctx.lineTo(-4,0);ctx.closePath();ctx.fill();
+    ctx.restore();ctx.shadowBlur=0;});
+
+  // Shield visual
+  if(boss.shieldActive){
+    const shA=0.15+Math.sin(t*4)*0.08;
+    ctx.globalAlpha=shA;ctx.strokeStyle='#44ddff';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(sx,sy,R+12,0,Math.PI*2);ctx.stroke();
+    // Shield segments
+    for(let i=0;i<6;i++){const a=i*Math.PI/3+t*0.8;
+      ctx.beginPath();ctx.arc(sx,sy,R+12,a,a+0.3);ctx.stroke();}
+    // Shield hp indicator — brighter when high
+    const shRatio=boss.shieldHp/Math.max(1,100+boss.timesKilled*30);
+    ctx.globalAlpha=shRatio*0.1;
+    const shg=ctx.createRadialGradient(sx,sy,R,sx,sy,R+20);
+    shg.addColorStop(0,'#44ddff');shg.addColorStop(1,'rgba(68,221,255,0)');
+    ctx.fillStyle=shg;ctx.beginPath();ctx.arc(sx,sy,R+20,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;}
+
+  ctx.save();ctx.translate(sx,sy);ctx.rotate(boss.angle);
+  // Aura
+  if(enr){ctx.globalAlpha=0.07+Math.sin(t*5)*0.03;ctx.fillStyle='#44ddff';ctx.beginPath();ctx.arc(0,0,R*3,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+  const ag=ctx.createRadialGradient(0,0,R*0.3,0,0,R*(enr?3.5:2.5));ag.addColorStop(0,`rgba(68,221,255,${enr?0.18:0.08})`);ag.addColorStop(1,'rgba(68,221,255,0)');
+  ctx.fillStyle=ag;ctx.beginPath();ctx.arc(0,0,R*(enr?3.5:2.5),0,Math.PI*2);ctx.fill();
+
+  // Drop shadow
+  ctx.fillStyle='rgba(0,0,0,0.4)';ctx.beginPath();ctx.ellipse(0,6,R+8,R*0.35,0,0,Math.PI*2);ctx.fill();
+
+  // Legs — thick stone pillars
+  for(let s=-1;s<=1;s+=2){
+    const lp=boss.legAnim+s*Math.PI;
+    const lx=-R*0.15,ly=s*R*0.45;
+    const fx=lx+Math.sin(lp)*4,fy=ly+s*18+Math.cos(lp)*3;
+    ctx.fillStyle=flash?'#fff':'#665544';ctx.strokeStyle='#887766';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(lx-6,ly);ctx.lineTo(lx+6,ly);ctx.lineTo(fx+7,fy);ctx.lineTo(fx-7,fy);ctx.closePath();ctx.fill();ctx.stroke();
+    // Foot crystal
+    ctx.fillStyle='#2288cc';ctx.shadowColor='#44ddff';ctx.shadowBlur=3;
+    ctx.beginPath();ctx.arc(fx,fy,4,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
+
+  // Arms — massive stone fists
+  for(let s=-1;s<=1;s+=2){
+    const armAngle=s*0.5+Math.sin(boss.legAnim*0.5+s)*0.15;
+    const shoulderX=R*0.4,shoulderY=s*R*0.4;
+    const elbowX=shoulderX+Math.cos(armAngle)*R*0.3,elbowY=shoulderY+Math.sin(armAngle)*R*0.3+s*10;
+    const fistX=elbowX+Math.cos(armAngle)*R*0.3,fistY=elbowY+s*12;
+    // Upper arm
+    ctx.strokeStyle=flash?'#fff':'#776655';ctx.lineWidth=8;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(shoulderX,shoulderY);ctx.lineTo(elbowX,elbowY);ctx.stroke();
+    // Lower arm
+    ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(elbowX,elbowY);ctx.lineTo(fistX,fistY);ctx.stroke();
+    // Fist — large rocky knuckle
+    const fistR=8+boss.clawAnim*4;
+    ctx.fillStyle=flash?'#fff':enr?'#998877':'#887766';ctx.shadowColor='#44ddff';ctx.shadowBlur=enr?8:3;
+    ctx.beginPath();ctx.arc(fistX,fistY,fistR,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+    // Crystal veins on fist
+    ctx.strokeStyle='#44ddff';ctx.lineWidth=1;ctx.globalAlpha=0.5;
+    ctx.beginPath();ctx.moveTo(fistX-3,fistY-2);ctx.lineTo(fistX+4,fistY+3);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(fistX+2,fistY-3);ctx.lineTo(fistX-3,fistY+4);ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+
+  // Body — bulky rectangular torso with crystal veins
+  ctx.fillStyle=flash?'#fff':enr?'#998866':'#887766';ctx.shadowColor=enr?'#44ddff':'#2288cc';ctx.shadowBlur=enr?18:8;
+  ctx.beginPath();
+  ctx.moveTo(-R*0.35,-R*0.45);ctx.lineTo(R*0.3,-R*0.4);ctx.lineTo(R*0.4,-R*0.15);
+  ctx.lineTo(R*0.4,R*0.15);ctx.lineTo(R*0.3,R*0.4);ctx.lineTo(-R*0.35,R*0.45);
+  ctx.lineTo(-R*0.4,R*0.2);ctx.lineTo(-R*0.4,-R*0.2);ctx.closePath();ctx.fill();ctx.shadowBlur=0;
+
+  // Crystal veins across torso
+  ctx.strokeStyle='#44ddff';ctx.lineWidth=1.5;ctx.globalAlpha=0.5+Math.sin(t*3)*0.15;
+  ctx.beginPath();ctx.moveTo(-R*0.2,-R*0.3);ctx.lineTo(0,-R*0.05);ctx.lineTo(R*0.15,-R*0.25);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-R*0.15,R*0.2);ctx.lineTo(R*0.1,R*0.1);ctx.lineTo(R*0.25,R*0.3);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,-R*0.05);ctx.lineTo(R*0.1,R*0.1);ctx.stroke();
+  ctx.globalAlpha=1;
+
+  // Crystal clusters on shoulders
+  for(let s=-1;s<=1;s+=2){
+    ctx.fillStyle=flash?'#fff':'#44ddff';ctx.shadowColor='#44ddff';ctx.shadowBlur=6;
+    const cx2=R*0.35,cy2=s*R*0.35;
+    // Main crystal
+    ctx.beginPath();ctx.moveTo(cx2,cy2-8);ctx.lineTo(cx2+5,cy2);ctx.lineTo(cx2,cy2+6);ctx.lineTo(cx2-4,cy2);ctx.closePath();ctx.fill();
+    // Smaller crystal
+    ctx.beginPath();ctx.moveTo(cx2+6,cy2-3);ctx.lineTo(cx2+9,cy2+1);ctx.lineTo(cx2+5,cy2+3);ctx.closePath();ctx.fill();
+    ctx.shadowBlur=0;}
+
+  // Core crystal in chest — glowing
+  const corePulse=0.6+Math.sin(t*4)*0.3;
+  ctx.fillStyle=enr?`rgba(255,68,68,${corePulse})`:`rgba(68,221,255,${corePulse})`;
+  ctx.shadowColor=enr?'#ff4444':'#44ddff';ctx.shadowBlur=enr?15:10;
+  ctx.beginPath();ctx.moveTo(R*0.05,-R*0.12);ctx.lineTo(R*0.15,0);ctx.lineTo(R*0.05,R*0.12);ctx.lineTo(-R*0.05,0);ctx.closePath();ctx.fill();
+  ctx.shadowBlur=0;
+
+  // Head — angular rocky head with crystal eyes
+  ctx.fillStyle=flash?'#fff':enr?'#aa9977':'#998866';ctx.shadowColor='#2288cc';ctx.shadowBlur=enr?10:5;
+  ctx.beginPath();
+  ctx.moveTo(R*0.5,0);ctx.lineTo(R*0.35,-R*0.22);ctx.lineTo(R*0.15,-R*0.25);
+  ctx.lineTo(R*0.1,-R*0.18);ctx.lineTo(R*0.1,R*0.18);
+  ctx.lineTo(R*0.15,R*0.25);ctx.lineTo(R*0.35,R*0.22);ctx.closePath();ctx.fill();ctx.shadowBlur=0;
+
+  // Head cracks
+  ctx.strokeStyle='#554433';ctx.lineWidth=1;ctx.globalAlpha=0.6;
+  ctx.beginPath();ctx.moveTo(R*0.3,-R*0.1);ctx.lineTo(R*0.2,-R*0.05);ctx.lineTo(R*0.25,R*0.02);ctx.stroke();
+  ctx.globalAlpha=1;
+
+  // Eyes — glowing crystals
+  const eg=enr?'#ff4444':'#44ddff';
+  for(let s=-1;s<=1;s+=2){const ex=R*0.38,ey=s*R*0.08;
+    ctx.fillStyle='#111';ctx.beginPath();ctx.moveTo(ex-3,ey);ctx.lineTo(ex,ey-3.5);ctx.lineTo(ex+3,ey);ctx.lineTo(ex,ey+3.5);ctx.closePath();ctx.fill();
+    ctx.fillStyle=flash?'#fff':eg;ctx.shadowColor=eg;ctx.shadowBlur=enr?10:6;
+    ctx.beginPath();ctx.moveTo(ex-2,ey);ctx.lineTo(ex,ey-2.5);ctx.lineTo(ex+2,ey);ctx.lineTo(ex,ey+2.5);ctx.closePath();ctx.fill();ctx.shadowBlur=0;}
+
+  // Jaw line
+  const jawAnim=boss.clawAnim||0;
+  ctx.strokeStyle=flash?'#fff':'#776655';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(R*0.45,jawAnim*3);ctx.lineTo(R*0.5,0);ctx.lineTo(R*0.45,-jawAnim*3);ctx.stroke();
+
+  // Ground pound windup visual — boss rises up
+  if(boss.groundPounding){
+    ctx.globalAlpha=0.3;ctx.fillStyle='#44ddff';
+    ctx.beginPath();ctx.arc(0,0,R*1.5,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
 
   ctx.restore();
   drawBossLabel(sx,sy,R);
