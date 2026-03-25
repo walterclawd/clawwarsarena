@@ -166,6 +166,24 @@ canvas{display:block;position:fixed;top:0;left:0}
 #demo-hint{position:fixed;bottom:50px;left:50%;transform:translateX(-50%);z-index:101;pointer-events:none;
   font-size:.6em;color:#333;letter-spacing:2px;animation:pulse 2s infinite;display:none}
 
+/* ═══ SPECTATOR TICKER ═══ */
+#spec-ticker{position:fixed;bottom:0;left:0;right:0;z-index:10;pointer-events:none;
+  height:30px;display:none;align-items:center;justify-content:center;gap:15px;
+  background:linear-gradient(to top,rgba(0,0,0,.9),rgba(0,0,0,.4),transparent);
+  font-size:.55em;padding-top:8px}
+#spec-ticker .st-sep{color:#222;font-size:1.2em}
+#spec-ticker .st-fighter{display:flex;align-items:center;gap:6px}
+#spec-ticker .st-fighter .st-kills{font-family:'Orbitron',sans-serif;font-weight:900;font-size:1.2em}
+#spec-ticker .st-fighter .st-dps{color:#555;font-size:.9em}
+#spec-ticker .st-fighter .st-name{font-family:'Orbitron',sans-serif;font-weight:700;font-size:.95em}
+#spec-ticker .st-boss{display:flex;align-items:center;gap:4px;font-size:.9em}
+#spec-ticker .st-boss .st-boss-hp{font-family:'Orbitron',sans-serif;font-weight:700}
+#spec-ticker .st-arena{color:#333;letter-spacing:2px;font-size:.85em}
+
+/* ═══ DANGER ZONE ═══ */
+#timer.danger{color:#ff4444!important;text-shadow:0 0 15px rgba(255,68,68,.6)!important;animation:timerDanger 1s infinite}
+@keyframes timerDanger{0%,100%{opacity:1}50%{opacity:.6}}
+
 /* Overlays */
 #vignette{position:fixed;inset:0;z-index:4;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.5) 100%)}
 #scanlines{position:fixed;inset:0;z-index:3;pointer-events:none;opacity:.03;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.3) 2px,rgba(0,0,0,.3) 4px)}
@@ -225,6 +243,16 @@ canvas{display:block;position:fixed;top:0;left:0}
   <div id="announcer"></div>
   <div id="boss-bar"><div class="bl" id="boss-label">🦞 LOBSTER KING 🦞</div><div class="bt"><div class="bf" id="boss-hp-fill" style="width:100%"></div></div></div>
   <div id="controls-hint"><span>F</span> Free Cam · <span>1/2</span> Focus Fighter</div>
+</div>
+
+<div id="spec-ticker">
+  <div class="st-fighter" id="st-f0"></div>
+  <div class="st-sep">⚔️</div>
+  <div class="st-fighter" id="st-f1"></div>
+  <div class="st-sep">|</div>
+  <div class="st-boss" id="st-boss"></div>
+  <div class="st-sep">|</div>
+  <div class="st-arena" id="st-arena"></div>
 </div>
 
 <div id="round-result">
@@ -606,16 +634,28 @@ function shoot(bot) {
       color:w.color,width:bot.wpn===3?2:3,life:bot.wpn===3?0.06:0.2,maxLife:bot.wpn===3?0.06:0.2});
     if(hitBot){hurtBot(hitBot,w.dmg,bot);spawnP(hitBot.x,hitBot.y,6,'#ff0000',100,2,0.25);sndHit();}
     else if(hitBoss){hurtBoss(w.dmg,bot);spawnP(boss.x,boss.y,6,'#ff4400',100,2,0.25);sndHit();}
+    // Muzzle flash
+    const mx2=bot.x+Math.cos(bot.angle)*16,my2=bot.y+Math.sin(bot.angle)*16;
+    spawnP(mx2,my2,3,w.color,80,2,0.1);
+    beams.push({x1:mx2,y1:my2,x2:mx2,y2:my2,color:w.color,width:15,life:0.04,maxLife:0.04,isFlash:true});
     sndShoot[bot.wpn]();
   } else if(w.pellets) {
     for(let i=0;i<w.pellets;i++){const a=bot.angle+(Math.random()-0.5)*w.spread;
       projs.push({x:bot.x+Math.cos(bot.angle)*14,y:bot.y+Math.sin(bot.angle)*14,
         vx:Math.cos(a)*w.speed,vy:Math.sin(a)*w.speed,dmg:w.dmg,size:w.size,color:w.trail,life:w.life,owner:bot,splash:0});}
+    // Shotgun muzzle flash — wider burst
+    const mx3=bot.x+Math.cos(bot.angle)*16,my3=bot.y+Math.sin(bot.angle)*16;
+    spawnP(mx3,my3,5,w.color,120,2.5,0.12);
+    beams.push({x1:mx3,y1:my3,x2:mx3,y2:my3,color:w.color,width:22,life:0.05,maxLife:0.05,isFlash:true});
     sndShoot[2]();
   } else {
     projs.push({x:bot.x+Math.cos(bot.angle)*14,y:bot.y+Math.sin(bot.angle)*14,
       vx:Math.cos(bot.angle)*w.speed,vy:Math.sin(bot.angle)*w.speed,
       dmg:w.dmg,size:w.size,color:w.trail,life:w.life,owner:bot,splash:w.splash,splashDmg:w.splashDmg,isRocket:true});
+    // Rocket muzzle flash — big and warm
+    const mx4=bot.x+Math.cos(bot.angle)*16,my4=bot.y+Math.sin(bot.angle)*16;
+    spawnP(mx4,my4,6,'#ff6600',100,3,0.15);spawnP(mx4,my4,3,'#ffaa00',60,2,0.1);
+    beams.push({x1:mx4,y1:my4,x2:mx4,y2:my4,color:'#ff6600',width:20,life:0.06,maxLife:0.06,isFlash:true});
     sndShoot[0]();
   }
 }
@@ -638,6 +678,7 @@ function hurtBot(bot, dmg, attacker) {
       if(Math.random()<0.5&&streaks[bots.indexOf(attacker)]<2){announceText=`${attacker.name}: "${t}"`;announceTimer=2;announceColor=attacker.color;}
     }
     addKill(attacker?attacker.name:'?', bot.name, attacker?attacker.color:'#888');
+    triggerKillFlash(attacker?attacker.color:'#ff4444');
     sndDie(); spawnP(bot.x,bot.y,25,bot.color,200,4,0.9); spawnP(bot.x,bot.y,12,'#ff0000',160,3,0.6);
     // Enhanced death debris
     for(let i=0;i<8;i++){const a=Math.random()*Math.PI*2,sp=80+Math.random()*180;
@@ -762,7 +803,9 @@ function hurtBoss(dmg,attacker){
       announceText=`${attacker.name} SLAYS THE BOSS! (+3)`;announceTimer=3;announceColor='#ff8800';
       addKill(attacker.name,`${bt.icon} BOSS`,attacker.color);
     }
-    sndBossRoar(); shake=1;
+    sndBossRoar(); shake=1; triggerSlowMo(0.8); triggerKillFlash(bt.color);
+    // Pan camera to boss death location
+    cam.tx=boss.x-W/2;cam.ty=boss.y-H/2;freeCam=false;autoSpecTimer=5;
     spawnP(boss.x,boss.y,40,bt.color,300,6,1.2); spawnP(boss.x,boss.y,25,bt.accentColor,250,5,1);
     spawnP(boss.x,boss.y,30,'#ffffff',280,3,1);
     beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:bt.color,width:120,life:0.3,maxLife:0.3,isFlash:true});
@@ -2484,7 +2527,12 @@ function showVersusScreen(cfg1,cfg2,matchNum,totalMatches){
     </div>
     <div class="vs-slash"></div>
     <div class="vs-boss-warn">${BOSS_TYPES[(matchNum-1)%BOSS_TYPES.length].icon} ${BOSS_TYPES[(matchNum-1)%BOSS_TYPES.length].name} WILL HUNT BOTH FIGHTERS</div>
-    <div style="position:absolute;bottom:8%;font-family:'Orbitron',sans-serif;font-size:.6em;color:${ARENA_COLORS[(matchNum-1)%ARENA_NAMES.length]};letter-spacing:3px;z-index:3;opacity:0;animation:vsBoss 0.5s ease-out forwards;animation-delay:1s">ARENA: ${ARENA_NAMES[(matchNum-1)%ARENA_NAMES.length]}</div>`;
+    <div style="position:absolute;bottom:12%;font-family:'Orbitron',sans-serif;font-size:.6em;color:${ARENA_COLORS[(matchNum-1)%ARENA_NAMES.length]};letter-spacing:3px;z-index:3;opacity:0;animation:vsBoss 0.5s ease-out forwards;animation-delay:1s">ARENA: ${ARENA_NAMES[(matchNum-1)%ARENA_NAMES.length]}</div>
+    ${(()=>{const lb=loadLeaderboard();const s1=lb[cfg1.name],s2=lb[cfg2.name];
+      const r1=s1?`${s1.w}W-${s1.l}L`:'DEBUT',r2=s2?`${s2.w}W-${s2.l}L`:'DEBUT';
+      return `<div style="position:absolute;bottom:5%;font-family:'Share Tech Mono',monospace;font-size:.55em;color:#444;letter-spacing:1px;z-index:3;opacity:0;animation:vsBoss 0.5s ease-out forwards;animation-delay:1.2s">
+        <span style="color:${cfg1.color}">${r1}</span> · ALL-TIME RECORDS · <span style="color:${cfg2.color}">${r2}</span></div>`;
+    })()}`;
   sndVS();
   // Draw fighter shapes on mini canvases
   drawMiniBot('vf-canvas-l',cfg1);
@@ -2517,13 +2565,14 @@ function drawMiniBot(canvasId,cfg){
 function startFight(){
   gamePhase='fight';
   document.getElementById('hud').style.display='block';
+  document.getElementById('spec-ticker').style.display='flex';
   const [i,j]=matchups[currentMatch];
   arenaIdx=currentMatch%ARENA_NAMES.length;
   genMap();initPickups();initBoss();
   bots=[makeBot(botConfigs[i],6*TILE,MH*TILE/2), makeBot(botConfigs[j],(MW-6)*TILE,MH*TILE/2)];
   bots[0].angle=0;bots[1].angle=Math.PI;
   projs=[];parts=[];beams=[];dmgPopups=[];roundKills=[0,0];bossKills=[0,0];streaks=[0,0];gameTime=0;shake=0;specIdx=0;freeCam=false;
-  slowMoTimer=0;slowMoScale=1;autoSpecTimer=0;lastKillTime=0;
+  slowMoTimer=0;slowMoScale=1;autoSpecTimer=0;lastKillTime=0;killFlashTimer=0;firstBlood=false;
   combos=[0,0];comboTimers=[0,0];maxCombos=[0,0];totalDmgDealt=[0,0];totalDmgTaken=[0,0];
   // Start countdown
   countdownTimer=3.5;countdownPhase='countdown';
@@ -2544,6 +2593,7 @@ function checkRoundEnd(){
 function endRound(winIdx){
   gamePhase='result';
   document.getElementById('hud').style.display='none';
+  document.getElementById('spec-ticker').style.display='none';
   const el=document.getElementById('round-result');el.style.display='flex';
   const [i,j]=matchups[currentMatch];
   const cfg0=botConfigs[i],cfg1=botConfigs[j];
@@ -2606,6 +2656,79 @@ function startTournament(){
   showVersusScreen(botConfigs[i],botConfigs[j],1,matchups.length);
 }
 
+// ═══ SPECTATOR TICKER ═══
+function updateSpecTicker(){
+  if(bots.length<2)return;
+  const b0=bots[0],b1=bots[1];
+  const dps0=gameTime>1?(totalDmgDealt[0]/gameTime).toFixed(0):'0';
+  const dps1=gameTime>1?(totalDmgDealt[1]/gameTime).toFixed(0):'0';
+  document.getElementById('st-f0').innerHTML=
+    `<span class="st-name" style="color:${b0.color}">${b0.name}</span>`+
+    `<span class="st-kills" style="color:${b0.color}">${roundKills[0]}</span>`+
+    `<span class="st-dps">${dps0} DPS</span>`;
+  document.getElementById('st-f1').innerHTML=
+    `<span class="st-dps">${dps1} DPS</span>`+
+    `<span class="st-kills" style="color:${b1.color}">${roundKills[1]}</span>`+
+    `<span class="st-name" style="color:${b1.color}">${b1.name}</span>`;
+  const bt=BOSS_TYPES[bossTypeIdx];
+  if(boss&&boss.alive){
+    const bPct=Math.round(boss.hp/boss.maxHp*100);
+    document.getElementById('st-boss').innerHTML=
+      `${bt.icon} <span class="st-boss-hp" style="color:${bt.color}">${bPct}%</span>`;
+  } else if(boss&&!boss.alive){
+    const respSec=Math.ceil(boss.respawnT);
+    document.getElementById('st-boss').innerHTML=
+      `${bt.icon} <span style="color:#444">RESPAWN ${respSec}s</span>`;
+  }
+  document.getElementById('st-arena').textContent=ARENA_NAMES[arenaIdx];
+  document.getElementById('st-arena').style.color=ARENA_COLORS[arenaIdx];
+}
+
+// ═══ KILL FLASH (full-screen overlay on kills) ═══
+let killFlashTimer=0,killFlashColor='#fff';
+function triggerKillFlash(color){
+  killFlashTimer=0.25;killFlashColor=color;
+}
+function drawKillFlash(dt){
+  if(killFlashTimer<=0)return;
+  killFlashTimer-=dt;
+  const a=killFlashTimer/0.25;
+  // Top/bottom bars flash
+  ctx.globalAlpha=a*0.35;
+  ctx.fillStyle=killFlashColor;
+  ctx.fillRect(0,0,W,4);ctx.fillRect(0,H-4,W,4);
+  // Side accents
+  ctx.fillRect(0,0,3,H);ctx.fillRect(W-3,0,3,H);
+  // Center vignette pulse
+  ctx.globalAlpha=a*0.08;
+  const kg=ctx.createRadialGradient(W/2,H/2,W*0.2,W/2,H/2,W*0.55);
+  kg.addColorStop(0,'rgba(0,0,0,0)');kg.addColorStop(1,killFlashColor);
+  ctx.fillStyle=kg;ctx.fillRect(0,0,W,H);
+  ctx.globalAlpha=1;
+}
+
+// ═══ FIRST BLOOD + MATCHPOINT ANNOUNCEMENTS ═══
+let firstBlood=false;
+function checkSpecialAnnouncements(){
+  if(!firstBlood&&(roundKills[0]>0||roundKills[1]>0)){
+    firstBlood=true;
+    const killer=roundKills[0]>0?0:1;
+    announceText='FIRST BLOOD!';announceTimer=2;announceColor='#ff0000';
+    shake=Math.max(shake,0.3);triggerKillFlash('#ff0000');
+    snd(200,0.2,'sawtooth',0.1);snd(100,0.3,'square',0.08);
+  }
+  // Match point
+  for(let i=0;i<2;i++){
+    if(roundKills[i]===4&&roundKills[1-i]<5){
+      if(!bots[i]._matchPointAnnounced){
+        bots[i]._matchPointAnnounced=true;
+        announceText='MATCH POINT — '+bots[i].name;announceTimer=2;announceColor=bots[i].color;
+        shake=0.15;
+      }
+    }
+  }
+}
+
 // ═══ GAME LOOP ═══
 function loop(t){
   requestAnimationFrame(loop);
@@ -2649,6 +2772,7 @@ function loop(t){
   // Render
   ctx.clearRect(0,0,W,H);drawMap();drawHazards();drawPickups();parts.forEach(p=>drawPart(p));beams.forEach(b=>drawBeam(b));
   projs.forEach(p=>drawProj(p));[...bots].sort((a,b)=>a.y-b.y).forEach(b=>drawBot(b));drawBoss();drawDmgPopups(gameDt);
+  drawKillFlash(gameDt);checkSpecialAnnouncements();
   // Slow-mo visual indicator
   if(slowMoTimer>0){ctx.globalAlpha=0.08;ctx.fillStyle='#ffffff';ctx.fillRect(0,0,W,H);ctx.globalAlpha=1;
     // Vignette intensifies during slow-mo
@@ -2656,8 +2780,13 @@ function loop(t){
     ctx.fillStyle=sg;ctx.fillRect(0,0,W,H);}
   // HUD
   const tm=Math.floor(gameTime/60),ts=Math.floor(gameTime%60);
-  document.getElementById('timer').textContent=`${tm}:${ts.toString().padStart(2,'0')}`;
+  const timerEl=document.getElementById('timer');
+  timerEl.textContent=`${tm}:${ts.toString().padStart(2,'0')}`;
+  // Danger zone when time running low (last 15 seconds)
+  if(gameTime>75)timerEl.classList.add('danger');else timerEl.classList.remove('danger');
   if(Math.floor(t)%300<20)updateHUD();
+  // Spectator ticker
+  if(Math.floor(t)%500<20)updateSpecTicker();
   const ann=document.getElementById('announcer');
   if(announceTimer>0){ann.style.opacity=Math.min(1,announceTimer);ann.textContent=announceText;ann.style.color=announceColor;
     ann.style.textShadow=`0 0 20px ${announceColor},0 0 40px ${announceColor}`;}else ann.style.opacity='0';
