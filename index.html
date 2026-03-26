@@ -325,6 +325,12 @@ const sndGroundPound = () => { snd(25, 0.5, 'sawtooth', 0.2); snd(18, 0.6, 'squa
 const sndBoulderThrow = () => { snd(80, 0.2, 'sawtooth', 0.1); snd(55, 0.25, 'square', 0.07); snd(100, 0.15, 'triangle', 0.06); };
 const sndCrystalShatter = () => { snd(600, 0.08, 'square', 0.08); snd(900, 0.06, 'sine', 0.05); snd(1200, 0.04, 'triangle', 0.04); };
 const sndCrystalWall = () => { snd(150, 0.15, 'triangle', 0.07); snd(250, 0.1, 'sine', 0.05); };
+const sndWraithMoan = () => { snd(120, 0.6, 'sine', 0.1); snd(80, 0.8, 'triangle', 0.07); snd(150, 0.4, 'sawtooth', 0.04); };
+const sndSoulDrain = () => { snd(300, 0.2, 'sine', 0.08); snd(250, 0.25, 'triangle', 0.06); snd(200, 0.3, 'sine', 0.04); };
+const sndWraithVanish = () => { snd(800, 0.15, 'sine', 0.1); snd(600, 0.2, 'triangle', 0.06); snd(1000, 0.1, 'sine', 0.04); };
+const sndWraithAppear = () => { snd(100, 0.3, 'sawtooth', 0.12); snd(60, 0.4, 'square', 0.08); snd(200, 0.15, 'sine', 0.06); };
+const sndSpectralBolt = () => { snd(400, 0.08, 'triangle', 0.07); snd(600, 0.06, 'sine', 0.05); };
+const sndDeathSpiral = () => { snd(50, 0.5, 'sawtooth', 0.14); snd(70, 0.4, 'square', 0.1); snd(90, 0.3, 'triangle', 0.06); };
 const sndVS = () => { snd(300, 0.15, 'sine', 0.1); snd(450, 0.12, 'sine', 0.08); setTimeout(()=>snd(600,0.2,'sine',0.1),100); };
 
 // ═══ WEAPONS ═══
@@ -663,6 +669,8 @@ function shoot(bot) {
 function hurtBot(bot, dmg, attacker) {
   if(!bot.alive||bot.invulnT>0) return;
   let d=dmg;
+  // Wraith Mark of Death: marked bot takes 40% more damage
+  if(boss&&boss.alive&&boss.markOfDeath===bot)d*=1.4;
   if(bot.armor>0){const ab=Math.min(bot.armor,d*0.6);bot.armor-=ab;d-=ab*0.4;}
   bot.hp -= d;
   if(d>3) spawnDmgPopup(bot.x,bot.y,d,attacker?attacker.color:'#ff4444');
@@ -720,6 +728,7 @@ const BOSS_TYPES = [
   { id:'dragon', name:'INFERNO DRAGON', icon:'🐉', color:'#ff8800', accentColor:'#cc4400', hpBase:900, hpScale:220, spdBase:70, spdScale:7, radius:48 },
   { id:'phoenix', name:'STORM PHOENIX', icon:'🦅', color:'#ffdd00', accentColor:'#ff8800', hpBase:650, hpScale:160, spdBase:100, spdScale:12, radius:40 },
   { id:'golem', name:'CRYSTAL GOLEM', icon:'💎', color:'#44ddff', accentColor:'#2288cc', hpBase:1100, hpScale:280, spdBase:50, spdScale:5, radius:52 },
+  { id:'wraith', name:'SHADOW WRAITH', icon:'👻', color:'#8844cc', accentColor:'#5522aa', hpBase:700, hpScale:170, spdBase:90, spdScale:10, radius:40 },
 ];
 let bossTypeIdx = 0;
 
@@ -762,7 +771,14 @@ function initBoss() {
     shieldActive:false, shieldTimer:0, shieldHp:0,
     slamTimer:0, slamming:false, slamTarget:null,
     crystalShards:[], crystalShardTimer:0,
-    quakeRings:[], armorPlates:3
+    quakeRings:[], armorPlates:3,
+    // Wraith-specific
+    vanished:false, vanishTimer:0, vanishCooldown:0,
+    soulDrainTimer:0, soulDraining:false, soulDrainTarget:null, soulDrainDuration:0,
+    spectralBoltTimer:0, shadowClones:[], shadowCloneTimer:0,
+    deathSpiralTimer:0, deathSpiraling:false, deathSpiralAngle:0, deathSpiralDuration:0,
+    hauntTimer:0, hauntTarget:null, markOfDeath:null, markTimer:0,
+    wraithTrails:[]
   };
   // Init serpent segments
   if(bt.id==='serpent'){
@@ -811,7 +827,7 @@ function hurtBoss(dmg,attacker){
     beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:bt.color,width:120,life:0.3,maxLife:0.3,isFlash:true});
     for(let i=0;i<10;i++){const a=Math.random()*Math.PI*2,sp=100+Math.random()*200;
       parts.push({x:boss.x,y:boss.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color:i%2?bt.color:bt.accentColor,size:5+Math.random()*5,life:2,maxLife:2,grav:120,bounce:true});}
-    boss.webTraps=[];boss.spiderlings=[];boss.venomPools=[];boss.fireTrails=[];boss.crystalWalls=[];boss.crystalShards=[];boss.quakeRings=[];
+    boss.webTraps=[];boss.spiderlings=[];boss.venomPools=[];boss.fireTrails=[];boss.crystalWalls=[];boss.crystalShards=[];boss.quakeRings=[];boss.shadowClones=[];boss.wraithTrails=[];
     document.getElementById('boss-bar').style.display='none';
   } else {
     const fill=document.getElementById('boss-hp-fill');
@@ -833,6 +849,7 @@ function updateBoss(dt){
       if(bt.id==='dragon'){boss.fireTrails=[];}
       if(bt.id==='phoenix'){boss.lightningStrikes=[];boss.swooping=false;boss.storming=false;boss.rebirthUsed=false;boss.rebirthTriggered=false;boss.featherBarrage=false;}
       if(bt.id==='golem'){boss.crystalWalls=[];boss.crystalShards=[];boss.quakeRings=[];boss.groundPounding=false;boss.slamming=false;boss.shieldActive=false;boss.armorPlates=3+boss.timesKilled;}
+      if(bt.id==='wraith'){boss.vanished=false;boss.soulDraining=false;boss.deathSpiraling=false;boss.shadowClones=[];boss.wraithTrails=[];boss.markOfDeath=null;boss.hauntTarget=null;}
       announceText=`${bt.icon} BOSS RETURNS!`;announceTimer=2.5;announceColor=bt.color;sndBossRoar();
       spawnP(boss.x,boss.y,25,bt.color,200,5,1);
       document.getElementById('boss-bar').style.display='block';
@@ -849,6 +866,7 @@ function updateBoss(dt){
   else if(bt.id==='dragon') updateBossDragon(dt);
   else if(bt.id==='phoenix') updateBossPhoenix(dt);
   else if(bt.id==='golem') updateBossGolem(dt);
+  else if(bt.id==='wraith') updateBossWraith(dt);
 
   // Ambient particles
   if(Math.random()<0.12){const pa=Math.random()*Math.PI*2;
@@ -1530,6 +1548,8 @@ function updateBossGolem(dt){
 // Override hurtBoss for golem shield
 const _origHurtBoss = hurtBoss;
 hurtBoss = function(dmg, attacker) {
+  // Wraith: immune while vanished
+  if(boss&&boss.alive&&BOSS_TYPES[bossTypeIdx].id==='wraith'&&boss.vanished)return;
   if(boss&&boss.alive&&BOSS_TYPES[bossTypeIdx].id==='golem'&&boss.shieldActive){
     boss.shieldHp-=dmg;if(dmg>5)spawnDmgPopup(boss.x,boss.y-boss.r,dmg,'#44ddff');
     boss.flashTimer=0.05;spawnP(boss.x+(Math.random()-0.5)*20,boss.y+(Math.random()-0.5)*20,3,'#44ddff',60,2,0.2);
@@ -1539,6 +1559,206 @@ hurtBoss = function(dmg, attacker) {
     return;}
   _origHurtBoss(dmg, attacker);
 };
+
+// ═══ SHADOW WRAITH AI ═══
+function updateBossWraith(dt){
+  const spdM=boss.enraged?1.7:1, turnR=boss.enraged?4:3;
+  boss.roarTimer-=dt; if(boss.roarTimer<=0){boss.roarTimer=5+Math.random()*5;sndWraithMoan();shake=Math.max(shake,0.08);}
+
+  // Update wraith trails (afterimages)
+  if(!boss.vanished&&Math.random()<0.15){
+    boss.wraithTrails.push({x:boss.x,y:boss.y,angle:boss.angle,life:0.6,maxLife:0.6});
+    if(boss.wraithTrails.length>8)boss.wraithTrails.shift();}
+  for(let i=boss.wraithTrails.length-1;i>=0;i--){
+    boss.wraithTrails[i].life-=dt;if(boss.wraithTrails[i].life<=0)boss.wraithTrails.splice(i,1);}
+
+  // Update shadow clones
+  for(let i=boss.shadowClones.length-1;i>=0;i--){
+    const cl=boss.shadowClones[i];cl.life-=dt;
+    if(cl.life<=0){spawnP(cl.x,cl.y,10,'#8844cc',80,3,0.3);boss.shadowClones.splice(i,1);continue;}
+    // Clones chase nearest bot slowly and shoot
+    let cNear=null,cDist=Infinity;
+    bots.forEach(b=>{if(!b.alive)return;const d=Math.hypot(b.x-cl.x,b.y-cl.y);if(d<cDist){cDist=d;cNear=b;}});
+    if(cNear){
+      const ca=Math.atan2(cNear.y-cl.y,cNear.x-cl.x);cl.angle=ca;
+      const cspd=60;cl.x+=Math.cos(ca)*cspd*dt;cl.y+=Math.sin(ca)*cspd*dt;
+      cl.attackTimer-=dt;
+      if(cl.attackTimer<=0&&cDist<300){cl.attackTimer=1.2;sndSpectralBolt();
+        projs.push({x:cl.x+Math.cos(ca)*20,y:cl.y+Math.sin(ca)*20,
+          vx:Math.cos(ca)*200,vy:Math.sin(ca)*200,dmg:8+boss.timesKilled*2,size:3,color:'#aa66dd',
+          life:1.5,owner:null,splash:0,isBossBubble:true});}
+      // Clones hurt on contact
+      if(cDist<boss.r*0.6+15){hurtBot(cNear,10*dt,null);}
+    }
+    // Ambient particles from clones
+    if(Math.random()<0.12){parts.push({x:cl.x+(Math.random()-0.5)*20,y:cl.y+(Math.random()-0.5)*20,
+      vx:(Math.random()-0.5)*20,vy:-15-Math.random()*20,color:'#8844cc',size:1+Math.random(),life:0.3,maxLife:0.3,grav:-10,bounce:false});}
+  }
+
+  // Vanish mechanic — disappears, then reappears behind a bot for a backstab
+  if(boss.vanished){
+    boss.vanishTimer-=dt;
+    // Subtle smoke at vanish location
+    if(Math.random()<0.05){const va=Math.random()*Math.PI*2;
+      parts.push({x:boss.x+Math.cos(va)*30,y:boss.y+Math.sin(va)*30,vx:Math.cos(va)*10,vy:-10,
+        color:'#5522aa',size:1.5,life:0.4,maxLife:0.4,grav:-15,bounce:false});}
+    if(boss.vanishTimer<=0){
+      boss.vanished=false;sndWraithAppear();shake=0.4;
+      // Teleport behind nearest bot
+      let nearest=null,nd=Infinity;
+      bots.forEach(b=>{if(!b.alive)return;const d=Math.hypot(b.x-boss.x,b.y-boss.y);if(d<nd){nd=d;nearest=b;}});
+      if(nearest){
+        const behindA=nearest.angle+Math.PI;
+        boss.x=nearest.x+Math.cos(behindA)*60;boss.y=nearest.y+Math.sin(behindA)*60;
+        boss.angle=Math.atan2(nearest.y-boss.y,nearest.x-boss.x);
+        // Backstab damage
+        hurtBot(nearest,50+boss.timesKilled*10,null);
+        spawnP(nearest.x,nearest.y,15,'#8844cc',180,4,0.5);
+        beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:'#8844cc',width:80,life:0.15,maxLife:0.15,isFlash:true});
+        announceText='👻 BACKSTAB!';announceTimer=1.5;announceColor='#8844cc';
+      }
+      spawnP(boss.x,boss.y,20,'#5522aa',150,4,0.6);
+    }
+    return;
+  }
+
+  // Soul drain — tethers to a bot and drains HP, healing the wraith
+  if(boss.soulDraining&&boss.soulDrainTarget){
+    boss.soulDrainDuration-=dt;
+    const tgt=boss.soulDrainTarget;
+    const alive=bots.find(b=>b===tgt&&b.alive);
+    if(!alive||boss.soulDrainDuration<=0||Math.hypot(tgt.x-boss.x,tgt.y-boss.y)>250){
+      boss.soulDraining=false;boss.soulDrainTarget=null;
+    } else {
+      const drainDmg=(12+boss.timesKilled*3)*dt;
+      hurtBot(tgt,drainDmg,null);
+      boss.hp=Math.min(boss.maxHp,boss.hp+drainDmg*0.5);
+      document.getElementById('boss-hp-fill').style.width=(boss.hp/boss.maxHp*100)+'%';
+      // Drain beam particles
+      const dx=tgt.x-boss.x,dy=tgt.y-boss.y;
+      for(let f=0;f<3;f++){const t2=Math.random();
+        parts.push({x:boss.x+dx*t2+(Math.random()-0.5)*8,y:boss.y+dy*t2+(Math.random()-0.5)*8,
+          vx:(Math.random()-0.5)*10,vy:(Math.random()-0.5)*10,color:f%2?'#aa66dd':'#5522aa',
+          size:1.5+Math.random(),life:0.2,maxLife:0.2,grav:0,bounce:false});}
+      // Slow movement toward target
+      const toTgt=Math.atan2(dy,dx);
+      boss.angle=toTgt;
+    }
+    if(!boss.soulDraining){
+      // Continue normal AI below
+    } else return;
+  }
+
+  // Death spiral — AoE spinning attack
+  if(boss.deathSpiraling){
+    boss.deathSpiralDuration-=dt;
+    boss.deathSpiralAngle+=dt*(boss.enraged?12:8);
+    // Damage in expanding ring
+    const spiralR=boss.r+40+Math.sin(boss.deathSpiralAngle*0.5)*15;
+    bots.forEach(b=>{if(!b.alive)return;const d=Math.hypot(b.x-boss.x,b.y-boss.y);
+      if(d<spiralR){hurtBot(b,(15+boss.timesKilled*3)*dt,null);
+        const ka=Math.atan2(b.y-boss.y,b.x-boss.x);b.x+=Math.cos(ka)*2;b.y+=Math.sin(ka)*2;}});
+    // Spiral particles
+    for(let i=0;i<2;i++){
+      const sa=boss.deathSpiralAngle+i*Math.PI,sd=boss.r+20;
+      parts.push({x:boss.x+Math.cos(sa)*sd,y:boss.y+Math.sin(sa)*sd,
+        vx:Math.cos(sa)*60,vy:Math.sin(sa)*60,color:i%2?'#8844cc':'#5522aa',
+        size:2+Math.random()*2,life:0.4,maxLife:0.4,grav:0,bounce:false});}
+    if(boss.deathSpiralDuration<=0){boss.deathSpiraling=false;}
+    return;
+  }
+
+  let nearBot=null,nearDist=Infinity;
+  bots.forEach(b=>{if(!b.alive)return;const d=Math.hypot(b.x-boss.x,b.y-boss.y);if(d<nearDist){nearDist=d;nearBot=b;}});
+  if(!nearBot)return;
+  const toBot=Math.atan2(nearBot.y-boss.y,nearBot.x-boss.x);
+  let diff=toBot-boss.angle;while(diff>Math.PI)diff-=Math.PI*2;while(diff<-Math.PI)diff+=Math.PI*2;
+  boss.angle+=diff*turnR*dt;
+
+  // Wraith floats with erratic movement
+  const floatOff=Math.sin(gameTime*4)*25;
+  const erratic=Math.sin(gameTime*7)*15;
+  const perpA=boss.angle+Math.PI/2;
+  const mx=Math.cos(boss.angle)*boss.spd*spdM+Math.cos(perpA)*(floatOff+erratic)*dt*2;
+  const my=Math.sin(boss.angle)*boss.spd*spdM+Math.sin(perpA)*(floatOff+erratic)*dt*2;
+  const nx=boss.x+mx*dt,ny=boss.y+my*dt;
+  if(!circWall(nx,boss.y,boss.r*0.4))boss.x=nx;
+  if(!circWall(boss.x,ny,boss.r*0.4))boss.y=ny;
+  boss.x=Math.max(boss.r+TILE,Math.min(MW*TILE-boss.r-TILE,boss.x));
+  boss.y=Math.max(boss.r+TILE,Math.min(MH*TILE-boss.r-TILE,boss.y));
+
+  // Spectral strike (melee)
+  boss.attackTimer-=dt;
+  if(nearDist<boss.r+30&&boss.attackTimer<=0){boss.clawAnim=1;boss.attackTimer=boss.enraged?0.4:0.7;sndWraithMoan();shake=0.12;
+    bots.forEach(b=>{if(!b.alive)return;if(Math.hypot(b.x-boss.x,b.y-boss.y)<boss.r+38){
+      hurtBot(b,35+boss.timesKilled*6,null);spawnP(b.x,b.y,8,'#8844cc',100,3,0.3);
+      const ka=Math.atan2(b.y-boss.y,b.x-boss.x);b.x+=Math.cos(ka)*35;b.y+=Math.sin(ka)*35;}});}
+  if(boss.clawAnim>0){boss.clawAnim-=dt*5;if(boss.clawAnim<0)boss.clawAnim=0;}
+
+  // Spectral bolts — homing projectiles
+  boss.spectralBoltTimer-=dt;
+  if(boss.spectralBoltTimer<=0&&nearDist>boss.r+20){
+    boss.spectralBoltTimer=boss.enraged?0.6:1.2;sndSpectralBolt();
+    const count=boss.enraged?3:2;
+    for(let i=0;i<count;i++){
+      const ba=boss.angle+(i-(count-1)/2)*0.3;const bs=180+Math.random()*50;
+      projs.push({x:boss.x+Math.cos(ba)*(boss.r+5),y:boss.y+Math.sin(ba)*(boss.r+5),
+        vx:Math.cos(ba)*bs,vy:Math.sin(ba)*bs,dmg:14+boss.timesKilled*3,size:4,color:'#aa66dd',
+        life:2,owner:null,splash:30,splashDmg:8+boss.timesKilled*2,isBossBubble:true});}
+  }
+
+  // Vanish — disappears and reappears behind a bot
+  boss.vanishCooldown-=dt;
+  if(boss.vanishCooldown<=0&&nearDist>100&&Math.random()<0.01){
+    boss.vanished=true;boss.vanishTimer=boss.enraged?1:1.8;
+    boss.vanishCooldown=boss.enraged?5:8;sndWraithVanish();shake=0.15;
+    announceText='👻 VANISH!';announceTimer=1;announceColor='#5522aa';
+    spawnP(boss.x,boss.y,18,'#5522aa',120,4,0.5);
+    beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:'#5522aa',width:60,life:0.15,maxLife:0.15,isFlash:true});
+  }
+
+  // Soul drain — tethers to low-HP bot
+  boss.soulDrainTimer-=dt;
+  if(boss.soulDrainTimer<=0&&nearDist<200){
+    // Prefer lower HP target
+    let drainTarget=null,lowestHp=Infinity;
+    bots.forEach(b=>{if(!b.alive)return;if(b.hp<lowestHp){lowestHp=b.hp;drainTarget=b;}});
+    if(drainTarget&&Math.random()<0.012){
+      boss.soulDraining=true;boss.soulDrainTarget=drainTarget;
+      boss.soulDrainDuration=boss.enraged?2.5:2;boss.soulDrainTimer=boss.enraged?6:10;
+      sndSoulDrain();announceText='👻 SOUL DRAIN!';announceTimer=1.5;announceColor='#aa66dd';
+    }
+  }
+
+  // Shadow clones — summon decoys
+  boss.shadowCloneTimer-=dt;
+  if(boss.shadowCloneTimer<=0&&boss.shadowClones.length<(boss.enraged?3:2)){
+    boss.shadowCloneTimer=boss.enraged?5:9;sndWraithAppear();
+    const ca=Math.random()*Math.PI*2;
+    boss.shadowClones.push({x:boss.x+Math.cos(ca)*60,y:boss.y+Math.sin(ca)*60,
+      angle:ca,life:8,attackTimer:0});
+    spawnP(boss.x,boss.y,8,'#5522aa',60,3,0.3);
+    announceText='👻 SHADOW CLONE!';announceTimer=1;announceColor='#8844cc';
+  }
+
+  // Death spiral — spinning AoE
+  boss.deathSpiralTimer-=dt;
+  if(boss.deathSpiralTimer<=0&&nearDist<160&&Math.random()<0.008){
+    boss.deathSpiraling=true;boss.deathSpiralAngle=0;
+    boss.deathSpiralDuration=boss.enraged?2.5:2;boss.deathSpiralTimer=boss.enraged?7:12;
+    sndDeathSpiral();shake=0.25;
+    announceText='👻 DEATH SPIRAL!';announceTimer=1.2;announceColor='#8844cc';
+  }
+
+  // Mark of death — marks a bot, increasing damage taken
+  boss.markTimer-=dt;
+  if(boss.markTimer<=0&&Math.random()<0.006){
+    boss.markTimer=boss.enraged?8:14;
+    boss.markOfDeath=nearBot;
+    announceText='👻 MARKED FOR DEATH: '+nearBot.name;announceTimer=2;announceColor='#aa66dd';
+    spawnP(nearBot.x,nearBot.y,12,'#aa66dd',100,3,0.4);
+  }
+}
 
 // ═══ BOT AI ═══
 function updateBot(b,dt){
@@ -1676,6 +1896,7 @@ function drawBoss(){
   else if(bt.id==='dragon') drawBossDragon();
   else if(bt.id==='phoenix') drawBossPhoenix();
   else if(bt.id==='golem') drawBossGolem();
+  else if(bt.id==='wraith') drawBossWraith();
 }
 
 function drawBossLabel(sx,sy,R){
@@ -2352,6 +2573,210 @@ function drawBossGolem(){
 
   ctx.restore();
   drawBossLabel(sx,sy,R);
+}
+
+// ═══ SHADOW WRAITH DRAWING ═══
+function drawBossWraith(){
+  if(boss.vanished){
+    // Draw faint shimmer at boss position when vanished
+    const sx=boss.x-cam.x,sy=boss.y-cam.y;
+    if(sx>-100&&sx<W+100&&sy>-100&&sy<H+100){
+      ctx.globalAlpha=0.04+Math.sin(performance.now()*0.008)*0.02;
+      ctx.fillStyle='#5522aa';ctx.beginPath();ctx.arc(sx,sy,boss.r*1.5,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=1;}
+    // Still draw clones when vanished
+    drawWraithClones();
+    return;
+  }
+  const sx=boss.x-cam.x,sy=boss.y-cam.y;
+  if(sx<-200||sx>W+200||sy<-200||sy>H+200)return;
+  const t=performance.now()*0.001,R=boss.r,flash=boss.flashTimer>0,enr=boss.enraged;
+
+  // Draw wraith trails (afterimages)
+  (boss.wraithTrails||[]).forEach(tr=>{
+    const tx2=tr.x-cam.x,ty2=tr.y-cam.y;
+    const a=tr.life/tr.maxLife;
+    ctx.globalAlpha=a*0.2;
+    ctx.save();ctx.translate(tx2,ty2);ctx.rotate(tr.angle);
+    ctx.fillStyle='#5522aa';
+    ctx.beginPath();ctx.moveTo(R*0.6,0);ctx.quadraticCurveTo(R*0.2,-R*0.4,-R*0.3,-R*0.25);
+    ctx.quadraticCurveTo(-R*0.6,0,-R*0.3,R*0.25);ctx.quadraticCurveTo(R*0.2,R*0.4,R*0.6,0);ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha=1;});
+
+  // Draw soul drain beam
+  if(boss.soulDraining&&boss.soulDrainTarget){
+    const tgt=boss.soulDrainTarget;
+    const tx2=tgt.x-cam.x,ty2=tgt.y-cam.y;
+    ctx.globalAlpha=0.5+Math.sin(t*8)*0.2;
+    ctx.strokeStyle='#aa66dd';ctx.lineWidth=3;ctx.shadowColor='#8844cc';ctx.shadowBlur=10;
+    ctx.beginPath();ctx.moveTo(sx,sy);
+    // Wavy beam
+    const dx=tx2-sx,dy=ty2-sy,len=Math.hypot(dx,dy);
+    const steps=8;
+    for(let i=1;i<=steps;i++){const f=i/steps;
+      const bx=sx+dx*f+(Math.sin(t*12+i*2))*10*(1-f);
+      const by=sy+dy*f+(Math.cos(t*10+i*2.5))*10*(1-f);
+      ctx.lineTo(bx,by);}
+    ctx.stroke();ctx.shadowBlur=0;
+    // Soul orbs flowing along beam
+    for(let i=0;i<3;i++){const f=(t*2+i*0.33)%1;
+      const ox=sx+dx*f,oy=sy+dy*f;
+      ctx.fillStyle='#cc88ff';ctx.beginPath();ctx.arc(ox,oy,3+Math.sin(t*6+i)*1,0,Math.PI*2);ctx.fill();}
+    ctx.globalAlpha=1;
+  }
+
+  // Draw death spiral effect
+  if(boss.deathSpiraling){
+    const spiralR=R+40;
+    ctx.globalAlpha=0.2;ctx.strokeStyle='#8844cc';ctx.lineWidth=2;
+    for(let ring=0;ring<3;ring++){
+      ctx.beginPath();ctx.arc(sx,sy,spiralR-ring*10,boss.deathSpiralAngle+ring*0.3,boss.deathSpiralAngle+ring*0.3+Math.PI*1.5);ctx.stroke();}
+    ctx.globalAlpha=1;
+  }
+
+  // Draw shadow clones
+  drawWraithClones();
+
+  // Draw mark of death on marked bot
+  if(boss.markOfDeath&&boss.markOfDeath.alive){
+    const mk=boss.markOfDeath;const mkx=mk.x-cam.x,mky=mk.y-cam.y;
+    ctx.globalAlpha=0.4+Math.sin(t*6)*0.2;ctx.strokeStyle='#aa66dd';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(mkx,mky,mk.r+8,0,Math.PI*2);ctx.stroke();
+    // Skull-like mark above
+    ctx.fillStyle='#aa66dd';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+    ctx.fillText('💀',mkx,mky-mk.r-14);
+    ctx.globalAlpha=1;
+  }
+
+  ctx.save();ctx.translate(sx,sy);ctx.rotate(boss.angle);
+
+  // Aura — dark, foreboding
+  if(enr){ctx.globalAlpha=0.08+Math.sin(t*7)*0.04;ctx.fillStyle='#8844cc';ctx.beginPath();ctx.arc(0,0,R*3.5,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+  const ag=ctx.createRadialGradient(0,0,R*0.3,0,0,R*(enr?4:3));
+  ag.addColorStop(0,`rgba(136,68,204,${enr?0.2:0.1})`);ag.addColorStop(1,'rgba(136,68,204,0)');
+  ctx.fillStyle=ag;ctx.beginPath();ctx.arc(0,0,R*(enr?4:3),0,Math.PI*2);ctx.fill();
+
+  // Shadow (very faint — wraith floats)
+  ctx.fillStyle='rgba(0,0,0,0.15)';ctx.beginPath();ctx.ellipse(0,8,R*0.6,R*0.15,0,0,Math.PI*2);ctx.fill();
+
+  // Tattered cloak/shroud — flowing shape
+  ctx.fillStyle=flash?'#fff':enr?'#6633aa':'#5522aa';ctx.shadowColor='#8844cc';ctx.shadowBlur=enr?20:12;
+  ctx.beginPath();
+  ctx.moveTo(R*0.5,0);
+  ctx.quadraticCurveTo(R*0.3,-R*0.45,-R*0.1,-R*0.4);
+  ctx.quadraticCurveTo(-R*0.5,-R*0.3,-R*0.55,0);
+  // Tattered bottom edges
+  const tatter1=Math.sin(t*3)*R*0.08,tatter2=Math.sin(t*3.5+1)*R*0.1,tatter3=Math.sin(t*4+2)*R*0.07;
+  ctx.quadraticCurveTo(-R*0.6,R*0.2,-R*0.4,R*0.4+tatter1);
+  ctx.lineTo(-R*0.25,R*0.35+tatter2);
+  ctx.lineTo(-R*0.1,R*0.42+tatter3);
+  ctx.quadraticCurveTo(R*0.1,R*0.45,R*0.3,R*0.35+tatter1);
+  ctx.quadraticCurveTo(R*0.45,R*0.2,R*0.5,0);
+  ctx.closePath();ctx.fill();ctx.shadowBlur=0;
+
+  // Inner darker layer
+  ctx.fillStyle=flash?'#eee':'#331166';ctx.globalAlpha=0.5;
+  ctx.beginPath();
+  ctx.moveTo(R*0.35,0);
+  ctx.quadraticCurveTo(R*0.2,-R*0.3,-R*0.05,-R*0.28);
+  ctx.quadraticCurveTo(-R*0.35,-R*0.2,-R*0.38,0);
+  ctx.quadraticCurveTo(-R*0.35,R*0.2,-R*0.15,R*0.3);
+  ctx.quadraticCurveTo(R*0.1,R*0.32,R*0.35,0);
+  ctx.closePath();ctx.fill();ctx.globalAlpha=1;
+
+  // Hood
+  ctx.fillStyle=flash?'#fff':enr?'#7733bb':'#5522aa';
+  ctx.beginPath();
+  ctx.moveTo(R*0.4,-R*0.08);
+  ctx.quadraticCurveTo(R*0.35,-R*0.45,R*0.05,-R*0.48);
+  ctx.quadraticCurveTo(-R*0.25,-R*0.5,-R*0.35,-R*0.35);
+  ctx.quadraticCurveTo(-R*0.4,-R*0.1,-R*0.2,0);
+  ctx.quadraticCurveTo(R*0.05,R*0.08,R*0.4,-R*0.08);
+  ctx.closePath();ctx.fill();
+
+  // Eyes — glowing spectral orbs deep in hood
+  const eg=enr?'#ff4444':'#cc88ff';
+  const eyeFloat=Math.sin(t*5)*1.5;
+  for(let s=-1;s<=1;s+=2){
+    const ex=R*0.15,ey=s*R*0.1+eyeFloat;
+    // Dark socket
+    ctx.fillStyle='#110022';ctx.beginPath();ctx.arc(ex,ey,4,0,Math.PI*2);ctx.fill();
+    // Glowing eye
+    ctx.fillStyle=flash?'#fff':eg;ctx.shadowColor=eg;ctx.shadowBlur=enr?12:8;
+    ctx.beginPath();ctx.arc(ex,ey,2.5+Math.sin(t*4+s)*0.5,0,Math.PI*2);ctx.fill();
+    // Eye trail/glow
+    ctx.fillStyle=eg;ctx.globalAlpha=0.3;
+    ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(ex-8,ey+s*2);ctx.lineTo(ex-5,ey);ctx.closePath();ctx.fill();
+    ctx.globalAlpha=1;ctx.shadowBlur=0;
+  }
+
+  // Spectral hands/claws reaching forward
+  const handAnim=boss.clawAnim||0;
+  for(let s=-1;s<=1;s+=2){
+    ctx.strokeStyle=flash?'#fff':'#7733bb';ctx.lineWidth=2.5;ctx.lineCap='round';
+    const hx1=R*0.2,hy1=s*R*0.25;
+    const hx2=R*0.45+handAnim*12,hy2=s*(R*0.3+handAnim*5);
+    ctx.beginPath();ctx.moveTo(hx1,hy1);ctx.quadraticCurveTo(R*0.35,s*R*0.35,hx2,hy2);ctx.stroke();
+    // Ghostly fingers
+    for(let f=-1;f<=1;f++){
+      ctx.beginPath();ctx.moveTo(hx2,hy2);ctx.lineTo(hx2+6+handAnim*4,hy2+f*4+s*handAnim*3);ctx.stroke();}
+    // Hand glow
+    ctx.fillStyle=eg;ctx.shadowColor=eg;ctx.shadowBlur=4;ctx.globalAlpha=0.3;
+    ctx.beginPath();ctx.arc(hx2,hy2,3,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;ctx.shadowBlur=0;
+  }
+
+  // Floating wispy trails from bottom of cloak
+  for(let i=0;i<4;i++){
+    const wx=-R*0.3+i*R*0.2,wy=R*0.35+Math.sin(t*2.5+i)*R*0.08;
+    ctx.strokeStyle='#5522aa';ctx.lineWidth=1.5;ctx.globalAlpha=0.4;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(wx,wy);
+    ctx.quadraticCurveTo(wx+(Math.sin(t*3+i)*8),wy+15+Math.sin(t*2+i)*5,wx+(Math.sin(t*4+i)*12),wy+25+Math.sin(t*2.5+i)*8);
+    ctx.stroke();ctx.globalAlpha=1;
+  }
+
+  // Dark particles emanating from body
+  if(Math.random()<0.18){const pa=Math.random()*Math.PI*2;
+    parts.push({x:boss.x+Math.cos(pa)*R*0.6,y:boss.y+Math.sin(pa)*R*0.6,
+      vx:Math.cos(pa)*15+(Math.random()-0.5)*10,vy:-20-Math.random()*25,
+      color:Math.random()>0.5?'#8844cc':'#5522aa',size:1+Math.random()*1.5,
+      life:0.5+Math.random()*0.3,maxLife:0.8,grav:-15,bounce:false});}
+
+  // Death spiral visual overlay
+  if(boss.deathSpiraling){
+    ctx.globalAlpha=0.15;ctx.fillStyle='#8844cc';
+    ctx.beginPath();ctx.arc(0,0,R*1.8,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+
+  ctx.restore();
+  drawBossLabel(sx,sy,R);
+}
+
+function drawWraithClones(){
+  (boss.shadowClones||[]).forEach(cl=>{
+    const cx=cl.x-cam.x,cy=cl.y-cam.y;
+    const a=Math.min(1,cl.life/1.5); // Fade in/out
+    const t=performance.now()*0.001;
+    ctx.globalAlpha=a*0.5; // Clones are semi-transparent
+    ctx.save();ctx.translate(cx,cy);ctx.rotate(cl.angle);
+    // Simplified wraith shape
+    ctx.fillStyle='#5522aa';ctx.shadowColor='#8844cc';ctx.shadowBlur=8;
+    const R=boss.r*0.6;
+    ctx.beginPath();
+    ctx.moveTo(R*0.5,0);
+    ctx.quadraticCurveTo(R*0.3,-R*0.45,-R*0.1,-R*0.4);
+    ctx.quadraticCurveTo(-R*0.5,-R*0.3,-R*0.55,0);
+    ctx.quadraticCurveTo(-R*0.5,R*0.3,-R*0.2,R*0.4);
+    ctx.quadraticCurveTo(R*0.1,R*0.45,R*0.5,0);
+    ctx.closePath();ctx.fill();ctx.shadowBlur=0;
+    // Clone eyes
+    ctx.fillStyle='#cc88ff';ctx.shadowColor='#cc88ff';ctx.shadowBlur=5;
+    ctx.beginPath();ctx.arc(R*0.15,-R*0.08,2,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(R*0.15,R*0.08,2,0,Math.PI*2);ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.restore();
+    ctx.globalAlpha=1;
+  });
 }
 
 function drawProj(p){const sx=p.x-cam.x,sy=p.y-cam.y;if(sx<-20||sx>W+20||sy<-20||sy>H+20)return;
