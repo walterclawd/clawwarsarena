@@ -332,6 +332,7 @@ const sndWraithAppear = () => { snd(100, 0.3, 'sawtooth', 0.12); snd(60, 0.4, 's
 const sndSpectralBolt = () => { snd(400, 0.08, 'triangle', 0.07); snd(600, 0.06, 'sine', 0.05); };
 const sndDeathSpiral = () => { snd(50, 0.5, 'sawtooth', 0.14); snd(70, 0.4, 'square', 0.1); snd(90, 0.3, 'triangle', 0.06); };
 const sndVS = () => { snd(300, 0.15, 'sine', 0.1); snd(450, 0.12, 'sine', 0.08); setTimeout(()=>snd(600,0.2,'sine',0.1),100); };
+const sndPowerup = () => { snd(400,0.1,'sine',0.12);snd(600,0.08,'sine',0.1);setTimeout(()=>snd(800,0.12,'sine',0.1),60);setTimeout(()=>snd(1000,0.1,'sine',0.08),120); };
 
 // ═══ WEAPONS ═══
 const WPNS = [
@@ -345,8 +346,8 @@ const WPN_MAP = { rocket:0, railgun:1, shotgun:2, lightning:3 };
 // ═══ MAP ═══
 const TILE = 28, MW = 40, MH = 30;
 let map = [], arenaIdx = 0, hazards = [], dmgPopups = [];
-const ARENA_NAMES = ['THE CAGE','CRUCIBLE','LABYRINTH','COLOSSEUM'];
-const ARENA_COLORS = ['#0ff','#ff4400','#aa00ff','#ffaa00'];
+const ARENA_NAMES = ['THE CAGE','CRUCIBLE','LABYRINTH','COLOSSEUM','VOIDRIFT'];
+const ARENA_COLORS = ['#0ff','#ff4400','#aa00ff','#ffaa00','#00ff88'];
 
 function genMap() {
   map = []; hazards = [];
@@ -381,7 +382,7 @@ function genMap() {
     // Electric zones in corridors
     hazards.push({type:'electric',x:20*TILE,y:8*TILE,r:35,dmg:8});
     hazards.push({type:'electric',x:20*TILE,y:(MH-9)*TILE,r:35,dmg:8});
-  } else {
+  } else if(arenaIdx===3){
     // COLOSSEUM — open center, ring of pillars
     const cx=MW/2,cy=MH/2;
     for(let i=0;i<8;i++){
@@ -395,6 +396,22 @@ function genMap() {
     // Corner electric
     hazards.push({type:'electric',x:5*TILE,y:5*TILE,r:40,dmg:6});
     hazards.push({type:'electric',x:(MW-5)*TILE,y:(MH-5)*TILE,r:40,dmg:6});
+  } else if(arenaIdx===4){
+    // VOIDRIFT — asymmetric rifts with floating island clusters
+    box(10,3,2,6); box(MW-12,3,2,6); box(10,MH-9,2,6); box(MW-12,MH-9,2,6);
+    // Central zigzag barrier
+    box(17,12,1,2); box(18,14,1,2); box(19,12,1,2); box(20,14,1,2); box(21,12,1,2); box(22,14,1,2);
+    // Side pillars
+    box(6,10,2,2); box(MW-8,10,2,2); box(6,MH-12,2,2); box(MW-8,MH-12,2,2);
+    // Island clusters
+    box(14,7,1,1); box(16,8,1,1); box(MW-17,7,1,1); box(MW-15,8,1,1);
+    box(14,MH-8,1,1); box(16,MH-9,1,1); box(MW-17,MH-8,1,1); box(MW-15,MH-9,1,1);
+    // Void rifts — electric damage zones
+    hazards.push({type:'electric',x:13*TILE,y:MH/2*TILE,r:45,dmg:10});
+    hazards.push({type:'electric',x:(MW-13)*TILE,y:MH/2*TILE,r:45,dmg:10});
+    // Lava rift in center
+    hazards.push({type:'lava',x:MW/2*TILE,y:7*TILE,r:35,dmg:12});
+    hazards.push({type:'lava',x:MW/2*TILE,y:(MH-7)*TILE,r:35,dmg:12});
   }
 }
 
@@ -403,6 +420,8 @@ let pickups = [];
 const PICK_DEFS = [
   { type:'health',val:50,color:'#00ff44',glow:'rgba(0,255,68,',resp:10 },
   { type:'armor',val:50,color:'#4488ff',glow:'rgba(68,136,255,',resp:15 },
+  { type:'quad',val:8,color:'#ff00ff',glow:'rgba(255,0,255,',resp:30 },
+  { type:'haste',val:6,color:'#ffff00',glow:'rgba(255,255,0,',resp:25 },
 ];
 function initPickups() {
   pickups = [];
@@ -411,6 +430,9 @@ function initPickups() {
     const def = PICK_DEFS[i%2===0?0:1];
     pickups.push({...def, x:px*TILE+TILE/2, y:py*TILE+TILE/2, active:true, timer:0});
   });
+  // Quad Damage and Haste powerups in center area
+  pickups.push({...PICK_DEFS[2], x:MW/2*TILE, y:(MH/2-3)*TILE, active:true, timer:0});
+  pickups.push({...PICK_DEFS[3], x:MW/2*TILE, y:(MH/2+3)*TILE, active:true, timer:0});
 }
 
 // ═══ STATE ═══
@@ -613,13 +635,15 @@ function makeBot(cfg, spawnX, spawnY) {
     alive: true, lastShot: 0, bob: Math.random()*Math.PI*2, moving: true,
     respawnT: 0, strafeT: 0, strafeDir: 1, moveAng: Math.random()*Math.PI*2,
     invulnT: 2, trailTimer: 0,
+    quadTimer: 0, hasteTimer: 0,
   };
 }
 
 // ═══ COMBAT ═══
 function shoot(bot) {
   const w = WPNS[bot.wpn], now = performance.now();
-  if (now - bot.lastShot < w.rate) return;
+  const fireRate = bot.hasteTimer>0 ? w.rate*0.6 : w.rate;
+  if (now - bot.lastShot < fireRate) return;
   bot.lastShot = now;
   if (w.hitscan) {
     let hitBot=null, hitDist=w.beamLen, hitBoss=false;
@@ -669,6 +693,8 @@ function shoot(bot) {
 function hurtBot(bot, dmg, attacker) {
   if(!bot.alive||bot.invulnT>0) return;
   let d=dmg;
+  // Quad Damage multiplier
+  if(attacker&&attacker.quadTimer>0)d*=3;
   // Wraith Mark of Death: marked bot takes 40% more damage
   if(boss&&boss.alive&&boss.markOfDeath===bot)d*=1.4;
   if(bot.armor>0){const ab=Math.min(bot.armor,d*0.6);bot.armor-=ab;d-=ab*0.4;}
@@ -1790,15 +1816,26 @@ function updateBot(b,dt){
     else if(b.dodge==='aggressive'){mvx+=Math.cos(toTgt)*0.3;mvy+=Math.sin(toTgt)*0.3;}
     else if(b.dodge==='unpredictable'){if(Math.random()<0.02)b.moveAng=Math.random()*Math.PI*2;mvx+=Math.cos(b.moveAng)*0.4;mvy+=Math.sin(b.moveAng)*0.4;}
   }
-  const ml=Math.hypot(mvx,mvy)||1;moveEnt(b,mvx/ml*b.spd,mvy/ml*b.spd,dt);b.bob+=dt*10;b.moving=true;
+  const spdMul=b.hasteTimer>0?1.6:1;
+  const ml=Math.hypot(mvx,mvy)||1;moveEnt(b,mvx/ml*b.spd*spdMul,mvy/ml*b.spd*spdMul,dt);b.bob+=dt*10;b.moving=true;
   b.angle=toTgt+(Math.random()-0.5)*(1-b.acc)*0.35;
   if(b.style==='sniper'&&dist>250)b.wpn=1;else if(b.style==='ambusher'&&dist<100)b.wpn=2;
   else if(b.style==='speedster')b.wpn=3;else if(dist<100&&b.baseWpn!==2)b.wpn=2;
   else if(dist>300)b.wpn=1;else b.wpn=b.baseWpn;
   if(dist<500&&!retreating)shoot(b);else if(retreating&&dist<200)shoot(b);
+  // Update powerup timers
+  if(b.quadTimer>0){b.quadTimer-=dt;if(b.quadTimer<=0){b.quadTimer=0;}}
+  if(b.hasteTimer>0){b.hasteTimer-=dt;if(b.hasteTimer<=0){b.hasteTimer=0;}}
   pickups.forEach(p=>{if(!p.active)return;if(Math.hypot(p.x-b.x,p.y-b.y)<18){
     if(p.type==='health'&&b.hp<b.maxHp){b.hp=Math.min(b.maxHp,b.hp+p.val);p.active=false;p.timer=p.resp;sndPick();}
-    else if(p.type==='armor'&&b.armor<100){b.armor=Math.min(100,b.armor+p.val);p.active=false;p.timer=p.resp;sndPick();}}});
+    else if(p.type==='armor'&&b.armor<100){b.armor=Math.min(100,b.armor+p.val);p.active=false;p.timer=p.resp;sndPick();}
+    else if(p.type==='quad'){b.quadTimer=p.val;p.active=false;p.timer=p.resp;sndPowerup();
+      announceText=`${b.name}: QUAD DAMAGE!`;announceTimer=2;announceColor='#ff00ff';shake=0.2;
+      spawnP(b.x,b.y,20,'#ff00ff',200,4,0.8);beams.push({x1:b.x,y1:b.y,x2:b.x,y2:b.y,color:'#ff00ff',width:80,life:0.2,maxLife:0.2,isFlash:true});}
+    else if(p.type==='haste'){b.hasteTimer=p.val;p.active=false;p.timer=p.resp;sndPowerup();
+      announceText=`${b.name}: HASTE!`;announceTimer=2;announceColor='#ffff00';shake=0.15;
+      spawnP(b.x,b.y,15,'#ffff00',180,3,0.7);beams.push({x1:b.x,y1:b.y,x2:b.x,y2:b.y,color:'#ffff00',width:60,life:0.15,maxLife:0.15,isFlash:true});}
+  }});
   b.trailTimer-=dt;if(b.trailTimer<=0&&b.moving){b.trailTimer=0.08;
     const tc=b.trailEffect==='fire'?'#ff4400':b.trailEffect==='electric'?'#00ffff':b.trailEffect==='plasma'?'#ff00ff':
       b.trailEffect==='lightning'?'#ffff00':b.trailEffect==='stealth'?'#225522':b.color;
@@ -1811,12 +1848,12 @@ function drawMap(){
   const sx=Math.floor(cam.x/TILE),sy=Math.floor(cam.y/TILE),ex=Math.ceil((cam.x+W)/TILE),ey=Math.ceil((cam.y+H)/TILE);
   const t=performance.now()*0.001;
   // Arena-specific floor and wall colors
-  const arenaFloor=['#08080f','#0a0808','#08060f','#0a0a06'][arenaIdx];
-  const arenaGrid=['#0c0c16','#160c0c','#120c18','#14140c'][arenaIdx];
-  const arenaWall=['#181830','#301818','#281830','#302818'][arenaIdx];
-  const arenaWallFace=['#222244','#442222','#382244','#443822'][arenaIdx];
+  const arenaFloor=['#08080f','#0a0808','#08060f','#0a0a06','#060f0a'][arenaIdx];
+  const arenaGrid=['#0c0c16','#160c0c','#120c18','#14140c','#0c180e'][arenaIdx];
+  const arenaWall=['#181830','#301818','#281830','#302818','#183024'][arenaIdx];
+  const arenaWallFace=['#222244','#442222','#382244','#443822','#224438'][arenaIdx];
   const arenaEdgeGlow=[
-    'rgba(0,255,255,0.06)','rgba(255,68,0,0.06)','rgba(170,0,255,0.06)','rgba(255,170,0,0.06)'
+    'rgba(0,255,255,0.06)','rgba(255,68,0,0.06)','rgba(170,0,255,0.06)','rgba(255,170,0,0.06)','rgba(0,255,136,0.06)'
   ][arenaIdx];
   for(let y=Math.max(0,sy);y<Math.min(MH,ey);y++) for(let x=Math.max(0,sx);x<Math.min(MW,ex);x++){
     const px=x*TILE-cam.x,py=y*TILE-cam.y;
@@ -1859,6 +1896,22 @@ function drawArenaAmbient(t){
     parts.push({x:Math.random()*MW*TILE,y:MH*TILE,vx:(Math.random()-0.5)*15,vy:-20-Math.random()*40,
       color:Math.random()>0.5?'#ffaa00':'#ff4400',size:1+Math.random(),life:2+Math.random()*2,maxLife:4,grav:-10,bounce:false});
   }
+  // Voidrift — swirling void particles and dimensional rifts
+  if(arenaIdx===4){
+    // Pulsing void rifts
+    if(Math.random()<0.04){
+      const rx=(5+Math.random()*(MW-10))*TILE,ry=(5+Math.random()*(MH-10))*TILE;
+      parts.push({x:rx,y:ry,vx:(Math.random()-0.5)*30,vy:-15-Math.random()*25,
+        color:Math.random()>0.5?'#00ff88':'#00ffcc',size:1+Math.random()*1.5,life:1.5+Math.random()*2,maxLife:3.5,grav:-5,bounce:false});
+    }
+    // Dimensional crack lines
+    if(Math.random()<0.005){
+      ctx.globalAlpha=0.06;ctx.strokeStyle='#00ff88';ctx.lineWidth=1;
+      ctx.beginPath();const cx2=Math.random()*W,cy2=Math.random()*H;ctx.moveTo(cx2,cy2);
+      for(let s=0;s<3;s++){ctx.lineTo(cx2+(Math.random()-0.5)*80,cy2+(Math.random()-0.5)*80);}
+      ctx.stroke();ctx.globalAlpha=1;
+    }
+  }
 }
 
 function drawBot(b){
@@ -1882,6 +1935,22 @@ function drawBot(b){
     ctx.fillStyle='#fff';ctx.shadowColor='#fff';ctx.shadowBlur=4;ctx.beginPath();ctx.arc(e1x,e1y,2.5,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(e2x,e2y,2.5,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
   const bx1=sx+Math.cos(b.angle)*b.r*1.1,by1=sy+bob+Math.sin(b.angle)*b.r*1.1;const bx2=sx+Math.cos(b.angle)*b.r*2,by2=sy+bob+Math.sin(b.angle)*b.r*2;
   ctx.strokeStyle=b.accent;ctx.lineWidth=3;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(bx1,by1);ctx.lineTo(bx2,by2);ctx.stroke();
+  // Quad Damage glow
+  if(b.quadTimer>0){const qp=0.3+Math.sin(performance.now()*0.01)*0.15;
+    ctx.fillStyle=`rgba(255,0,255,${qp})`;ctx.shadowColor='#ff00ff';ctx.shadowBlur=20;
+    ctx.beginPath();ctx.arc(sx,sy+bob,b.r+6,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+    // Quad particles
+    if(Math.random()<0.3){const qa=Math.random()*Math.PI*2;
+      parts.push({x:b.x+Math.cos(qa)*b.r*1.2,y:b.y+Math.sin(qa)*b.r*1.2,vx:Math.cos(qa)*20,vy:Math.sin(qa)*20,
+        color:'#ff00ff',size:1.5+Math.random(),life:0.3,maxLife:0.3,grav:0,bounce:false});}}
+  // Haste glow
+  if(b.hasteTimer>0){const hp=0.2+Math.sin(performance.now()*0.015)*0.1;
+    ctx.strokeStyle=`rgba(255,255,0,${hp})`;ctx.lineWidth=2;ctx.shadowColor='#ffff00';ctx.shadowBlur=12;
+    ctx.beginPath();ctx.arc(sx,sy+bob,b.r+4,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0;
+    // Speed lines behind bot
+    if(b.moving&&Math.random()<0.4){const ba=b.angle+Math.PI;
+      parts.push({x:b.x+Math.cos(ba)*b.r,y:b.y+Math.sin(ba)*b.r,vx:Math.cos(ba)*60,vy:Math.sin(ba)*60,
+        color:'#ffff00',size:1+Math.random()*0.5,life:0.15,maxLife:0.15,grav:0,bounce:false});}}
   ctx.font='bold 8px Share Tech Mono';ctx.textAlign='center';ctx.fillStyle=b.color;ctx.shadowColor=b.color;ctx.shadowBlur=3;ctx.fillText(b.name.toUpperCase(),sx,sy-b.r-11);ctx.shadowBlur=0;
   const bw=26;ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(sx-bw/2,sy-b.r-7,bw,3);
   const hpP=b.hp/b.maxHp;ctx.fillStyle=hpP>0.5?'#0f0':hpP>0.25?'#ff0':'#f00';ctx.fillRect(sx-bw/2,sy-b.r-7,bw*hpP,3);
@@ -2789,10 +2858,20 @@ function drawBeam(b){const x1=b.x1-cam.x,y1=b.y1-cam.y,x2=b.x2-cam.x,y2=b.y2-cam
 }
 function drawPickups(){const t=performance.now()*0.001;pickups.forEach(p=>{if(!p.active)return;
   const sx=p.x-cam.x,sy=p.y-cam.y;if(sx<-20||sx>W+20||sy<-20||sy>H+20)return;
-  const pulse=0.6+Math.sin(t*3)*0.3,g=ctx.createRadialGradient(sx,sy,2,sx,sy,14);
-  g.addColorStop(0,p.glow+`${pulse*0.2})`);g.addColorStop(1,p.glow+'0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(sx,sy,14,0,Math.PI*2);ctx.fill();
-  ctx.save();ctx.translate(sx,sy);ctx.rotate(t*2);ctx.fillStyle=p.color;ctx.shadowColor=p.color;ctx.shadowBlur=5;
-  if(p.type==='health'){ctx.fillRect(-2,-5,4,10);ctx.fillRect(-5,-2,10,4);}else{ctx.beginPath();ctx.moveTo(0,-6);ctx.lineTo(6,0);ctx.lineTo(4,6);ctx.lineTo(-4,6);ctx.lineTo(-6,0);ctx.fill();}
+  const isPower=p.type==='quad'||p.type==='haste';
+  const pulse=0.6+Math.sin(t*(isPower?5:3))*(isPower?0.4:0.3);
+  const gr=isPower?22:14;
+  const g=ctx.createRadialGradient(sx,sy,2,sx,sy,gr);
+  g.addColorStop(0,p.glow+`${pulse*(isPower?0.35:0.2)})`);g.addColorStop(1,p.glow+'0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(sx,sy,gr,0,Math.PI*2);ctx.fill();
+  // Powerup orbiting particles
+  if(isPower){for(let i=0;i<3;i++){const oa=t*3+i*Math.PI*2/3,od=10+Math.sin(t*4+i)*3;
+    ctx.fillStyle=p.color;ctx.globalAlpha=0.6;ctx.beginPath();ctx.arc(sx+Math.cos(oa)*od,sy+Math.sin(oa)*od,1.5,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}}
+  ctx.save();ctx.translate(sx,sy);ctx.rotate(t*2);ctx.fillStyle=p.color;ctx.shadowColor=p.color;ctx.shadowBlur=isPower?10:5;
+  if(p.type==='health'){ctx.fillRect(-2,-5,4,10);ctx.fillRect(-5,-2,10,4);}
+  else if(p.type==='armor'){ctx.beginPath();ctx.moveTo(0,-6);ctx.lineTo(6,0);ctx.lineTo(4,6);ctx.lineTo(-4,6);ctx.lineTo(-6,0);ctx.fill();}
+  else if(p.type==='quad'){/* Lightning bolt shape */ctx.beginPath();ctx.moveTo(2,-7);ctx.lineTo(-1,-1);ctx.lineTo(3,0);ctx.lineTo(-2,7);ctx.lineTo(1,1);ctx.lineTo(-3,0);ctx.closePath();ctx.fill();}
+  else if(p.type==='haste'){/* Arrow/speed lines */ctx.fillRect(-1,-6,2,12);ctx.beginPath();ctx.moveTo(0,-8);ctx.lineTo(4,-4);ctx.lineTo(-4,-4);ctx.closePath();ctx.fill();
+    ctx.fillRect(-5,-2,3,1);ctx.fillRect(-5,1,3,1);}
   ctx.shadowBlur=0;ctx.restore();});}
 function drawPart(p){const sx=p.x-cam.x,sy=p.y-cam.y;if(sx<-10||sx>W+10||sy<-10||sy>H+10)return;
   ctx.globalAlpha=Math.max(0,p.life/p.maxLife);ctx.fillStyle=p.color;ctx.fillRect(sx-p.size/2,sy-p.size/2,p.size,p.size);ctx.globalAlpha=1;}
@@ -3087,11 +3166,14 @@ function updateSpecTicker(){
   const b0=bots[0],b1=bots[1];
   const dps0=gameTime>1?(totalDmgDealt[0]/gameTime).toFixed(0):'0';
   const dps1=gameTime>1?(totalDmgDealt[1]/gameTime).toFixed(0):'0';
+  const pw0=(b0.quadTimer>0?'⚡':'')+(b0.hasteTimer>0?'💨':'');
+  const pw1=(b1.quadTimer>0?'⚡':'')+(b1.hasteTimer>0?'💨':'');
   document.getElementById('st-f0').innerHTML=
     `<span class="st-name" style="color:${b0.color}">${b0.name}</span>`+
     `<span class="st-kills" style="color:${b0.color}">${roundKills[0]}</span>`+
-    `<span class="st-dps">${dps0} DPS</span>`;
+    `<span class="st-dps">${dps0} DPS</span>`+(pw0?`<span style="font-size:1em">${pw0}</span>`:'');
   document.getElementById('st-f1').innerHTML=
+    (pw1?`<span style="font-size:1em">${pw1}</span>`:'')+
     `<span class="st-dps">${dps1} DPS</span>`+
     `<span class="st-kills" style="color:${b1.color}">${roundKills[1]}</span>`+
     `<span class="st-name" style="color:${b1.color}">${b1.name}</span>`;
