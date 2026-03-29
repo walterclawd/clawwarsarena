@@ -274,6 +274,9 @@ canvas{display:block;position:fixed;top:0;left:0}
 // ═══════════════════════════════════════════════
 // CLAWWARS ARENA v4 — 1v1 Tournament + Boss
 // ═══════════════════════════════════════════════
+// ═══ XSS SANITIZATION ═══
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
 let W, H;
@@ -593,7 +596,7 @@ function renderLeaderboard(configs) {
     const rankIcon = i === 0 ? '👑' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`;
     return `<div class="lb-row">
       <span class="lb-rank ${rankClass}">${rankIcon}</span>
-      <span class="lb-name" style="color:${e.color}">${e.name}</span>
+      <span class="lb-name" style="color:${esc(e.color)}">${esc(e.name)}</span>
       <span class="lb-stat lb-wins">${e.w}</span>
       <span class="lb-stat lb-losses">${e.l}</span>
       <span class="lb-stat lb-wr">${e.wr}%</span>
@@ -742,7 +745,7 @@ function explosion(x,y,radius,dmg,owner){
 function addKill(killer,victim,color){
   const el=document.getElementById('kill-feed'),div=document.createElement('div');
   div.className='kf'; div.style.borderColor=color;
-  div.innerHTML=`<span style="color:${color}">${killer}</span> <span style="color:#444">⚡</span> <span style="color:#f44">${victim}</span>`;
+  div.innerHTML=`<span style="color:${esc(color)}">${esc(killer)}</span> <span style="color:#444">⚡</span> <span style="color:#f44">${esc(victim)}</span>`;
   el.appendChild(div); setTimeout(()=>div.remove(),5000); if(el.children.length>5) el.firstChild.remove();
 }
 
@@ -3009,8 +3012,8 @@ function showVersusScreen(cfg1,cfg2,matchNum,totalMatches){
     <div class="vs-fighter left">
       <div class="vs-fighter-glow" style="background:${cfg1.color};left:-20px;top:0"></div>
       <canvas class="vf-canvas" id="vf-canvas-l" width="80" height="80"></canvas>
-      <div class="vf-name" style="color:${cfg1.color}">${cfg1.name}</div>
-      <div class="vf-title">${cfg1.title||''}</div>
+      <div class="vf-name" style="color:${esc(cfg1.color)}">${esc(cfg1.name)}</div>
+      <div class="vf-title">${esc(cfg1.title||'')}</div>
       <div class="vf-stats">
         <span>WPN:</span> ${(cfg1.strategy||{}).preferredWeapon||'rocket'}<br>
         <span>AGG:</span> ${((cfg1.strategy||{}).aggression||0.5).toFixed(1)} · <span>ACC:</span> ${((cfg1.strategy||{}).accuracy||0.5).toFixed(1)}<br>
@@ -3021,8 +3024,8 @@ function showVersusScreen(cfg1,cfg2,matchNum,totalMatches){
     <div class="vs-fighter right">
       <div class="vs-fighter-glow" style="background:${cfg2.color};right:-20px;top:0"></div>
       <canvas class="vf-canvas" id="vf-canvas-r" width="80" height="80"></canvas>
-      <div class="vf-name" style="color:${cfg2.color}">${cfg2.name}</div>
-      <div class="vf-title">${cfg2.title||''}</div>
+      <div class="vf-name" style="color:${esc(cfg2.color)}">${esc(cfg2.name)}</div>
+      <div class="vf-title">${esc(cfg2.title||'')}</div>
       <div class="vf-stats">
         <span>WPN:</span> ${(cfg2.strategy||{}).preferredWeapon||'rocket'}<br>
         <span>AGG:</span> ${((cfg2.strategy||{}).aggression||0.5).toFixed(1)} · <span>ACC:</span> ${((cfg2.strategy||{}).accuracy||0.5).toFixed(1)}<br>
@@ -3123,8 +3126,8 @@ function endRound(winIdx){
   const dps0=gameTime>0?(totalDmgDealt[0]/gameTime).toFixed(1):'0';
   const dps1=gameTime>0?(totalDmgDealt[1]/gameTime).toFixed(1):'0';
   document.getElementById('rr-stats').innerHTML=
-    `<span style="color:${cfg0.color}">${cfg0.name}</span>: ${roundKills[0]} kills · ${Math.round(totalDmgDealt[0])} dmg · ${dps0} DPS · ${maxCombos[0]}x combo<br>` +
-    `<span style="color:${cfg1.color}">${cfg1.name}</span>: ${roundKills[1]} kills · ${Math.round(totalDmgDealt[1])} dmg · ${dps1} DPS · ${maxCombos[1]}x combo<br>` +
+    `<span style="color:${esc(cfg0.color)}">${esc(cfg0.name)}</span>: ${roundKills[0]} kills · ${Math.round(totalDmgDealt[0])} dmg · ${dps0} DPS · ${maxCombos[0]}x combo<br>` +
+    `<span style="color:${esc(cfg1.color)}">${esc(cfg1.name)}</span>: ${roundKills[1]} kills · ${Math.round(totalDmgDealt[1])} dmg · ${dps1} DPS · ${maxCombos[1]}x combo<br>` +
     `Boss kills: ${bossKills[0]} / ${bossKills[1]} · Time: ${Math.floor(gameTime)}s`;
   setTimeout(()=>{el.style.display='none';currentMatch++;nextMatch();},4000);
 }
@@ -3146,7 +3149,7 @@ function showTourneyEnd(){
   document.getElementById('te-sub').textContent=(champCfg?champCfg.title:'')+ ` — ${champ[1].w}W ${champ[1].l}L`;
   document.getElementById('te-standings').innerHTML=sorted.map(([name,s],i)=>{
     const cfg=botConfigs.find(c=>c.name===name);const c=cfg?cfg.color:'#888';
-    return `<div class="te-row"><span class="rank">#${i+1}</span><span class="tname" style="color:${c}">${name}</span><span class="tw">${s.w}W</span><span class="tl">${s.l}L</span></div>`;
+    return `<div class="te-row"><span class="rank">#${i+1}</span><span class="tname" style="color:${esc(c)}">${esc(name)}</span><span class="tw">${s.w}W</span><span class="tl">${s.l}L</span></div>`;
   }).join('');
 }
 
@@ -3169,14 +3172,14 @@ function updateSpecTicker(){
   const pw0=(b0.quadTimer>0?'⚡':'')+(b0.hasteTimer>0?'💨':'');
   const pw1=(b1.quadTimer>0?'⚡':'')+(b1.hasteTimer>0?'💨':'');
   document.getElementById('st-f0').innerHTML=
-    `<span class="st-name" style="color:${b0.color}">${b0.name}</span>`+
-    `<span class="st-kills" style="color:${b0.color}">${roundKills[0]}</span>`+
+    `<span class="st-name" style="color:${esc(b0.color)}">${esc(b0.name)}</span>`+
+    `<span class="st-kills" style="color:${esc(b0.color)}">${roundKills[0]}</span>`+
     `<span class="st-dps">${dps0} DPS</span>`+(pw0?`<span style="font-size:1em">${pw0}</span>`:'');
   document.getElementById('st-f1').innerHTML=
     (pw1?`<span style="font-size:1em">${pw1}</span>`:'')+
     `<span class="st-dps">${dps1} DPS</span>`+
-    `<span class="st-kills" style="color:${b1.color}">${roundKills[1]}</span>`+
-    `<span class="st-name" style="color:${b1.color}">${b1.name}</span>`;
+    `<span class="st-kills" style="color:${esc(b1.color)}">${roundKills[1]}</span>`+
+    `<span class="st-name" style="color:${esc(b1.color)}">${esc(b1.name)}</span>`;
   const bt=BOSS_TYPES[bossTypeIdx];
   if(boss&&boss.alive){
     const bPct=Math.round(boss.hp/boss.maxHp*100);
@@ -3310,7 +3313,7 @@ function loop(t){
 // ═══ BOOT ═══
 function buildRoster(configs){
   document.getElementById('roster').innerHTML=configs.map(c=>
-    `<div class="bot-chip" style="--c:${c.color}"><span class="bname" style="color:${c.color}">${c.name}</span><span class="btitle">${c.title||''}</span></div>`).join('');
+    `<div class="bot-chip" style="--c:${esc(c.color)}"><span class="bname" style="color:${esc(c.color)}">${esc(c.name)}</span><span class="btitle">${esc(c.title||'')}</span></div>`).join('');
 }
 
 // ═══ AUTO-DEMO (background fight behind intro) ═══
