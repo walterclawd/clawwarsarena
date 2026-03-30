@@ -112,11 +112,15 @@ canvas{display:block;position:fixed;top:0;left:0}
 #round-result .rr-stats{font-size:.65em;color:#555;line-height:1.8;margin-bottom:15px;text-align:center}
 #round-result .rr-next{font-size:.7em;color:#0ff;letter-spacing:2px;animation:pulse 1.5s infinite}
 @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+@keyframes confettiFall{0%{transform:translateY(0) rotate(0deg);opacity:0.9}25%{opacity:0.8}100%{transform:translateY(110vh) rotate(720deg);opacity:0}}
+@keyframes fadeSlideIn{0%{opacity:0;transform:translateX(-20px)}100%{opacity:1;transform:translateX(0)}}
 
 /* ═══ TOURNAMENT END ═══ */
 #tourney-end{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.92);display:none;flex-direction:column;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
-#tourney-end .te-title{font-family:'Orbitron',sans-serif;font-size:1em;color:#f0f;letter-spacing:4px;margin-bottom:10px}
-#tourney-end .te-champ{font-family:'Orbitron',sans-serif;font-size:2.8em;font-weight:900;margin-bottom:5px;text-shadow:0 0 30px currentColor}
+#tourney-end .te-title{font-family:'Orbitron',sans-serif;font-size:1em;color:#f0f;letter-spacing:4px;margin-bottom:10px;animation:teTitlePulse 3s ease-in-out infinite}
+@keyframes teTitlePulse{0%,100%{opacity:0.8;letter-spacing:4px}50%{opacity:1;letter-spacing:6px}}
+#tourney-end .te-champ{font-family:'Orbitron',sans-serif;font-size:2.8em;font-weight:900;margin-bottom:5px;text-shadow:0 0 30px currentColor;animation:champGlow 2s ease-in-out infinite}
+@keyframes champGlow{0%,100%{text-shadow:0 0 30px currentColor,0 0 60px currentColor;transform:scale(1)}50%{text-shadow:0 0 50px currentColor,0 0 100px currentColor,0 0 150px currentColor;transform:scale(1.04)}}
 #tourney-end .te-sub{font-size:.75em;color:#888;letter-spacing:2px;margin-bottom:20px}
 #tourney-end .te-standings{min-width:300px;margin-bottom:20px}
 #tourney-end .te-row{display:flex;justify-content:space-between;padding:5px 10px;border-bottom:1px solid #111;font-size:.75em}
@@ -334,6 +338,11 @@ const sndWraithVanish = () => { snd(800, 0.15, 'sine', 0.1); snd(600, 0.2, 'tria
 const sndWraithAppear = () => { snd(100, 0.3, 'sawtooth', 0.12); snd(60, 0.4, 'square', 0.08); snd(200, 0.15, 'sine', 0.06); };
 const sndSpectralBolt = () => { snd(400, 0.08, 'triangle', 0.07); snd(600, 0.06, 'sine', 0.05); };
 const sndDeathSpiral = () => { snd(50, 0.5, 'sawtooth', 0.14); snd(70, 0.4, 'square', 0.1); snd(90, 0.3, 'triangle', 0.06); };
+const sndKrakenRoar = () => { snd(35, 0.8, 'sawtooth', 0.16); snd(25, 1, 'square', 0.12); snd(50, 0.5, 'triangle', 0.06); };
+const sndTentacleSlam = () => { snd(60, 0.3, 'sawtooth', 0.14); snd(40, 0.4, 'square', 0.1); snd(100, 0.15, 'triangle', 0.06); };
+const sndInkShot = () => { snd(250, 0.1, 'square', 0.08); snd(180, 0.12, 'triangle', 0.05); };
+const sndWhirlpool = () => { snd(80, 0.4, 'sine', 0.1); snd(120, 0.3, 'triangle', 0.07); snd(60, 0.5, 'sine', 0.05); };
+const sndTentacleGrab = () => { snd(100, 0.2, 'sawtooth', 0.1); snd(70, 0.25, 'square', 0.07); };
 const sndVS = () => { snd(300, 0.15, 'sine', 0.1); snd(450, 0.12, 'sine', 0.08); setTimeout(()=>snd(600,0.2,'sine',0.1),100); };
 const sndPowerup = () => { snd(400,0.1,'sine',0.12);snd(600,0.08,'sine',0.1);setTimeout(()=>snd(800,0.12,'sine',0.1),60);setTimeout(()=>snd(1000,0.1,'sine',0.08),120); };
 
@@ -349,8 +358,8 @@ const WPN_MAP = { rocket:0, railgun:1, shotgun:2, lightning:3 };
 // ═══ MAP ═══
 const TILE = 28, MW = 40, MH = 30;
 let map = [], arenaIdx = 0, hazards = [], dmgPopups = [];
-const ARENA_NAMES = ['THE CAGE','CRUCIBLE','LABYRINTH','COLOSSEUM','VOIDRIFT'];
-const ARENA_COLORS = ['#0ff','#ff4400','#aa00ff','#ffaa00','#00ff88'];
+const ARENA_NAMES = ['THE CAGE','CRUCIBLE','LABYRINTH','COLOSSEUM','VOIDRIFT','DEEP ABYSS'];
+const ARENA_COLORS = ['#0ff','#ff4400','#aa00ff','#ffaa00','#00ff88','#0088ff'];
 
 function genMap() {
   map = []; hazards = [];
@@ -415,6 +424,23 @@ function genMap() {
     // Lava rift in center
     hazards.push({type:'lava',x:MW/2*TILE,y:7*TILE,r:35,dmg:12});
     hazards.push({type:'lava',x:MW/2*TILE,y:(MH-7)*TILE,r:35,dmg:12});
+  } else if(arenaIdx===5){
+    // DEEP ABYSS — underwater ruins with coral pillars and whirlpool zones
+    // Scattered coral pillars
+    box(8,6,2,2); box(MW-10,6,2,2); box(8,MH-8,2,2); box(MW-10,MH-8,2,2);
+    box(14,10,2,1); box(MW-16,10,2,1); box(14,MH-11,2,1); box(MW-16,MH-11,1,2);
+    // Central sunken ruin arch
+    box(17,13,1,4); box(22,13,1,4);
+    box(18,12,4,1); box(18,17,4,1);
+    // Corner reef clusters
+    box(4,3,1,3); box(MW-5,3,1,3); box(4,MH-6,1,3); box(MW-5,MH-6,1,3);
+    // Side barriers
+    box(11,14,1,2); box(MW-12,14,1,2);
+    // Whirlpool hazards (electric type — pulls and damages)
+    hazards.push({type:'electric',x:8*TILE,y:MH/2*TILE,r:50,dmg:7});
+    hazards.push({type:'electric',x:(MW-8)*TILE,y:MH/2*TILE,r:50,dmg:7});
+    // Deep trench lava in center bottom
+    hazards.push({type:'lava',x:MW/2*TILE,y:(MH-4)*TILE,r:55,dmg:10});
   }
 }
 
@@ -758,6 +784,7 @@ const BOSS_TYPES = [
   { id:'phoenix', name:'STORM PHOENIX', icon:'🦅', color:'#ffdd00', accentColor:'#ff8800', hpBase:650, hpScale:160, spdBase:100, spdScale:12, radius:40 },
   { id:'golem', name:'CRYSTAL GOLEM', icon:'💎', color:'#44ddff', accentColor:'#2288cc', hpBase:1100, hpScale:280, spdBase:50, spdScale:5, radius:52 },
   { id:'wraith', name:'SHADOW WRAITH', icon:'👻', color:'#8844cc', accentColor:'#5522aa', hpBase:700, hpScale:170, spdBase:90, spdScale:10, radius:40 },
+  { id:'kraken', name:'STORM KRAKEN', icon:'🐙', color:'#0088ff', accentColor:'#0055aa', hpBase:950, hpScale:240, spdBase:60, spdScale:6, radius:50 },
 ];
 let bossTypeIdx = 0;
 
@@ -807,8 +834,20 @@ function initBoss() {
     spectralBoltTimer:0, shadowClones:[], shadowCloneTimer:0,
     deathSpiralTimer:0, deathSpiraling:false, deathSpiralAngle:0, deathSpiralDuration:0,
     hauntTimer:0, hauntTarget:null, markOfDeath:null, markTimer:0,
-    wraithTrails:[]
+    wraithTrails:[],
+    // Kraken-specific
+    tentacles:[], tentacleGrabTimer:0, tentacleGrabTarget:null, tentacleGrabbing:false,
+    inkCloudTimer:0, inkClouds:[],
+    whirlpoolTimer:0, whirlpools:[],
+    tentacleSlamTimer:0, tentacleSlamming:false, tentacleSlamPhase:0,
+    inkBoltTimer:0, tidalWaveTimer:0, tidalWaving:false, tidalWaveAngle:0,
+    krakenSubmerged:false, submergeTimer:0, submergeCooldown:0
   };
+  // Init kraken tentacles
+  if(bt.id==='kraken'){
+    boss.tentacles=[];
+    for(let i=0;i<6;i++){const ta=i*Math.PI*2/6;boss.tentacles.push({baseAngle:ta,angle:ta,length:boss.r+25+Math.random()*15,anim:Math.random()*Math.PI*2,active:true});}
+  }
   // Init serpent segments
   if(bt.id==='serpent'){
     boss.segments=[];
@@ -856,7 +895,7 @@ function hurtBoss(dmg,attacker){
     beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:bt.color,width:120,life:0.3,maxLife:0.3,isFlash:true});
     for(let i=0;i<10;i++){const a=Math.random()*Math.PI*2,sp=100+Math.random()*200;
       parts.push({x:boss.x,y:boss.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color:i%2?bt.color:bt.accentColor,size:5+Math.random()*5,life:2,maxLife:2,grav:120,bounce:true});}
-    boss.webTraps=[];boss.spiderlings=[];boss.venomPools=[];boss.fireTrails=[];boss.crystalWalls=[];boss.crystalShards=[];boss.quakeRings=[];boss.shadowClones=[];boss.wraithTrails=[];
+    boss.webTraps=[];boss.spiderlings=[];boss.venomPools=[];boss.fireTrails=[];boss.crystalWalls=[];boss.crystalShards=[];boss.quakeRings=[];boss.shadowClones=[];boss.wraithTrails=[];boss.inkClouds=[];boss.whirlpools=[];
     document.getElementById('boss-bar').style.display='none';
   } else {
     const fill=document.getElementById('boss-hp-fill');
@@ -879,6 +918,10 @@ function updateBoss(dt){
       if(bt.id==='phoenix'){boss.lightningStrikes=[];boss.swooping=false;boss.storming=false;boss.rebirthUsed=false;boss.rebirthTriggered=false;boss.featherBarrage=false;}
       if(bt.id==='golem'){boss.crystalWalls=[];boss.crystalShards=[];boss.quakeRings=[];boss.groundPounding=false;boss.slamming=false;boss.shieldActive=false;boss.armorPlates=3+boss.timesKilled;}
       if(bt.id==='wraith'){boss.vanished=false;boss.soulDraining=false;boss.deathSpiraling=false;boss.shadowClones=[];boss.wraithTrails=[];boss.markOfDeath=null;boss.hauntTarget=null;}
+      if(bt.id==='kraken'){boss.tentacles=[];boss.inkClouds=[];boss.whirlpools=[];boss.tentacleGrabbing=false;boss.tentacleSlamming=false;boss.krakenSubmerged=false;boss.tidalWaving=false;
+        // Init 6 tentacles
+        for(let i=0;i<6;i++){const ta=i*Math.PI*2/6;boss.tentacles.push({baseAngle:ta,angle:ta,length:boss.r+25+Math.random()*15,anim:Math.random()*Math.PI*2,active:true});}
+      }
       announceText=`${bt.icon} BOSS RETURNS!`;announceTimer=2.5;announceColor=bt.color;sndBossRoar();
       spawnP(boss.x,boss.y,25,bt.color,200,5,1);
       document.getElementById('boss-bar').style.display='block';
@@ -896,6 +939,7 @@ function updateBoss(dt){
   else if(bt.id==='phoenix') updateBossPhoenix(dt);
   else if(bt.id==='golem') updateBossGolem(dt);
   else if(bt.id==='wraith') updateBossWraith(dt);
+  else if(bt.id==='kraken') updateBossKraken(dt);
 
   // Ambient particles
   if(Math.random()<0.12){const pa=Math.random()*Math.PI*2;
@@ -1579,6 +1623,8 @@ const _origHurtBoss = hurtBoss;
 hurtBoss = function(dmg, attacker) {
   // Wraith: immune while vanished
   if(boss&&boss.alive&&BOSS_TYPES[bossTypeIdx].id==='wraith'&&boss.vanished)return;
+  // Kraken: immune while submerged
+  if(boss&&boss.alive&&BOSS_TYPES[bossTypeIdx].id==='kraken'&&boss.krakenSubmerged)return;
   if(boss&&boss.alive&&BOSS_TYPES[bossTypeIdx].id==='golem'&&boss.shieldActive){
     boss.shieldHp-=dmg;if(dmg>5)spawnDmgPopup(boss.x,boss.y-boss.r,dmg,'#44ddff');
     boss.flashTimer=0.05;spawnP(boss.x+(Math.random()-0.5)*20,boss.y+(Math.random()-0.5)*20,3,'#44ddff',60,2,0.2);
@@ -1789,6 +1835,198 @@ function updateBossWraith(dt){
   }
 }
 
+// ═══ STORM KRAKEN AI ═══
+function updateBossKraken(dt){
+  const spdM=boss.enraged?1.4:1, turnR=boss.enraged?2.2:1.6;
+  boss.roarTimer-=dt; if(boss.roarTimer<=0){boss.roarTimer=6+Math.random()*5;sndKrakenRoar();shake=Math.max(shake,0.12);}
+
+  // Animate tentacles
+  (boss.tentacles||[]).forEach((t2,i)=>{
+    t2.anim+=dt*(2+i*0.3);
+    t2.angle=t2.baseAngle+boss.angle+Math.sin(t2.anim)*0.25;
+  });
+
+  // Update ink clouds
+  for(let i=boss.inkClouds.length-1;i>=0;i--){
+    boss.inkClouds[i].life-=dt;if(boss.inkClouds[i].life<=0){boss.inkClouds.splice(i,1);continue;}
+    const ic=boss.inkClouds[i];
+    // Ink clouds reduce accuracy and slow bots inside
+    bots.forEach(b=>{if(!b.alive)return;if(Math.hypot(b.x-ic.x,b.y-ic.y)<ic.r){
+      hurtBot(b,(2+boss.timesKilled)*dt*5,null);
+      if(Math.random()<0.1)parts.push({x:b.x+(Math.random()-0.5)*15,y:b.y+(Math.random()-0.5)*15,
+        vx:(Math.random()-0.5)*15,vy:-10-Math.random()*15,color:'#001133',size:2+Math.random()*2,life:0.4,maxLife:0.4,grav:-8,bounce:false});}});
+  }
+  if(boss.inkClouds.length>4) boss.inkClouds.splice(0,boss.inkClouds.length-4);
+
+  // Update whirlpools
+  for(let i=boss.whirlpools.length-1;i>=0;i--){
+    boss.whirlpools[i].life-=dt;boss.whirlpools[i].angle+=dt*3;
+    if(boss.whirlpools[i].life<=0){boss.whirlpools.splice(i,1);continue;}
+    const wp=boss.whirlpools[i];
+    bots.forEach(b=>{if(!b.alive)return;const d=Math.hypot(b.x-wp.x,b.y-wp.y);
+      if(d<wp.r&&d>5){
+        // Pull toward center with tangential spin
+        const pullA=Math.atan2(wp.y-b.y,wp.x-b.x);
+        const spinA=pullA+Math.PI/2;
+        const pullStr=60*(1-d/wp.r);
+        b.x+=Math.cos(pullA)*pullStr*dt+Math.cos(spinA)*pullStr*0.5*dt;
+        b.y+=Math.sin(pullA)*pullStr*dt+Math.sin(spinA)*pullStr*0.5*dt;
+        hurtBot(b,(5+boss.timesKilled*2)*dt*3,null);
+      }});
+  }
+  if(boss.whirlpools.length>3) boss.whirlpools.splice(0,boss.whirlpools.length-3);
+
+  // Submerge mechanic — dives underwater, reappears with a slam
+  if(boss.krakenSubmerged){
+    boss.submergeTimer-=dt;
+    // Subtle ripple at last position
+    if(Math.random()<0.08){const ra=Math.random()*Math.PI*2,rd=Math.random()*30;
+      parts.push({x:boss.x+Math.cos(ra)*rd,y:boss.y+Math.sin(ra)*rd,vx:Math.cos(ra)*10,vy:Math.sin(ra)*10,
+        color:'#0055aa',size:1.5,life:0.5,maxLife:0.5,grav:0,bounce:false});}
+    if(boss.submergeTimer<=0){
+      boss.krakenSubmerged=false;sndKrakenRoar();shake=0.6;
+      // Teleport near a random bot
+      let target=null;bots.forEach(b=>{if(b.alive){if(!target||Math.random()>0.5)target=b;}});
+      if(target){boss.x=target.x+(Math.random()-0.5)*80;boss.y=target.y+(Math.random()-0.5)*80;}
+      // Emergence slam — big AoE
+      const slamR=boss.enraged?160:120;
+      bots.forEach(b=>{if(!b.alive)return;const d=Math.hypot(b.x-boss.x,b.y-boss.y);
+        if(d<slamR){const fall=1-d/slamR;hurtBot(b,(45+boss.timesKilled*8)*fall,null);
+          spawnP(b.x,b.y,10,'#0088ff',140,4,0.4);
+          const ka=Math.atan2(b.y-boss.y,b.x-boss.x);b.x+=Math.cos(ka)*65*fall;b.y+=Math.sin(ka)*65*fall;}});
+      spawnP(boss.x,boss.y,35,'#0088ff',280,5,1);spawnP(boss.x,boss.y,20,'#44aaff',220,4,0.8);
+      beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:'#0088ff',width:slamR,life:0.2,maxLife:0.2,isFlash:true});
+      announceText='🐙 EMERGENCE!';announceTimer=1.5;announceColor='#0088ff';
+      // Create whirlpool at emergence point
+      boss.whirlpools.push({x:boss.x,y:boss.y,r:70,life:6,angle:0});
+    }
+    return;
+  }
+
+  // Tentacle grab — reaches out to snatch a bot
+  if(boss.tentacleGrabbing&&boss.tentacleGrabTarget){
+    const gt=boss.tentacleGrabTarget;
+    const alive=bots.find(b=>b===gt&&b.alive);
+    if(!alive||Math.hypot(gt.x-boss.x,gt.y-boss.y)>300){
+      boss.tentacleGrabbing=false;boss.tentacleGrabTarget=null;
+    } else {
+      // Pull target toward boss
+      const pa=Math.atan2(boss.y-gt.y,boss.x-gt.x);
+      gt.x+=Math.cos(pa)*120*dt;gt.y+=Math.sin(pa)*120*dt;
+      hurtBot(gt,(8+boss.timesKilled*2)*dt,null);
+      // Crush if close enough
+      if(Math.hypot(gt.x-boss.x,gt.y-boss.y)<boss.r+20){
+        hurtBot(gt,40+boss.timesKilled*8,null);sndTentacleSlam();shake=0.3;
+        spawnP(gt.x,gt.y,12,'#0088ff',140,4,0.4);
+        const ka=Math.atan2(gt.y-boss.y,gt.x-boss.x);gt.x+=Math.cos(ka)*70;gt.y+=Math.sin(ka)*70;
+        boss.tentacleGrabbing=false;boss.tentacleGrabTarget=null;
+      }
+    }
+    // Tentacle grab particles
+    if(boss.tentacleGrabTarget){
+      const dx=boss.tentacleGrabTarget.x-boss.x,dy=boss.tentacleGrabTarget.y-boss.y;
+      for(let f=0;f<2;f++){const t2=Math.random();
+        parts.push({x:boss.x+dx*t2+(Math.random()-0.5)*6,y:boss.y+dy*t2+(Math.random()-0.5)*6,
+          vx:(Math.random()-0.5)*8,vy:(Math.random()-0.5)*8,color:f%2?'#0088ff':'#0055aa',
+          size:1.5+Math.random(),life:0.2,maxLife:0.2,grav:0,bounce:false});}
+    }
+  }
+
+  // Tentacle slam — AoE ground pound with tentacles
+  if(boss.tentacleSlamming){
+    boss.tentacleSlamPhase-=dt;
+    if(boss.tentacleSlamPhase<=0){
+      boss.tentacleSlamming=false;sndTentacleSlam();shake=0.5;
+      // Damage in multiple spots around boss (tentacle tips)
+      (boss.tentacles||[]).forEach(t2=>{
+        const tx2=boss.x+Math.cos(t2.angle)*t2.length*1.4;
+        const ty2=boss.y+Math.sin(t2.angle)*t2.length*1.4;
+        bots.forEach(b=>{if(!b.alive)return;if(Math.hypot(b.x-tx2,b.y-ty2)<40){
+          hurtBot(b,30+boss.timesKilled*6,null);spawnP(b.x,b.y,6,'#0088ff',100,3,0.3);
+          const ka=Math.atan2(b.y-ty2,b.x-tx2);b.x+=Math.cos(ka)*45;b.y+=Math.sin(ka)*45;}});
+        spawnP(tx2,ty2,8,'#0055aa',120,3,0.4);
+        beams.push({x1:tx2,y1:ty2,x2:tx2,y2:ty2,color:'#0088ff',width:50,life:0.1,maxLife:0.1,isFlash:true});
+      });
+    }
+    // During windup, tentacles rise
+    if(boss.tentacleSlamPhase>0){
+      for(let i=0;i<2;i++){const pa=Math.random()*Math.PI*2,pd=boss.r+Math.random()*20;
+        parts.push({x:boss.x+Math.cos(pa)*pd,y:boss.y+Math.sin(pa)*pd,vx:(Math.random()-0.5)*10,vy:-40-Math.random()*30,
+          color:'#0055aa',size:2+Math.random()*2,life:0.3,maxLife:0.3,grav:-20,bounce:false});}
+    }
+    return;
+  }
+
+  let nearBot=null,nearDist=Infinity;
+  bots.forEach(b=>{if(!b.alive)return;const d=Math.hypot(b.x-boss.x,b.y-boss.y);if(d<nearDist){nearDist=d;nearBot=b;}});
+  if(!nearBot)return;
+  const toBot=Math.atan2(nearBot.y-boss.y,nearBot.x-boss.x);
+  let diff=toBot-boss.angle;while(diff>Math.PI)diff-=Math.PI*2;while(diff<-Math.PI)diff+=Math.PI*2;
+  boss.angle+=diff*turnR*dt;
+  bossMove(spdM,dt);
+
+  // Melee tentacle slap
+  boss.attackTimer-=dt;
+  if(nearDist<boss.r+35&&boss.attackTimer<=0){boss.clawAnim=1;boss.attackTimer=boss.enraged?0.5:0.8;sndTentacleSlam();shake=0.18;
+    bots.forEach(b=>{if(!b.alive)return;if(Math.hypot(b.x-boss.x,b.y-boss.y)<boss.r+45){
+      hurtBot(b,40+boss.timesKilled*7,null);spawnP(b.x,b.y,8,'#0088ff',110,3,0.3);
+      const ka=Math.atan2(b.y-boss.y,b.x-boss.x);b.x+=Math.cos(ka)*50;b.y+=Math.sin(ka)*50;}});}
+  if(boss.clawAnim>0){boss.clawAnim-=dt*4;if(boss.clawAnim<0)boss.clawAnim=0;}
+
+  // Ink bolt projectiles
+  boss.inkBoltTimer-=dt;
+  if(boss.inkBoltTimer<=0&&nearDist>boss.r+30){boss.inkBoltTimer=boss.enraged?0.6:1.2;sndInkShot();
+    const count=boss.enraged?4:2;
+    for(let i=0;i<count;i++){const ba=boss.angle+(i-(count-1)/2)*0.3,bs=200+Math.random()*60;
+      projs.push({x:boss.x+Math.cos(ba)*(boss.r+5),y:boss.y+Math.sin(ba)*(boss.r+5),
+        vx:Math.cos(ba)*bs,vy:Math.sin(ba)*bs,dmg:16+boss.timesKilled*3,size:5,color:'#0066cc',
+        life:2,owner:null,splash:40,splashDmg:10+boss.timesKilled*2,isBossBubble:true});}}
+
+  // Ink cloud — drops blinding clouds
+  boss.inkCloudTimer-=dt;
+  if(boss.inkCloudTimer<=0&&nearDist<250){boss.inkCloudTimer=boss.enraged?3:5;sndInkShot();
+    boss.inkClouds.push({x:nearBot.x+(Math.random()-0.5)*40,y:nearBot.y+(Math.random()-0.5)*40,life:8,r:55});
+    spawnP(boss.x,boss.y,10,'#001133',80,3,0.4);
+    announceText='🐙 INK CLOUD!';announceTimer=1;announceColor='#0055aa';}
+
+  // Whirlpool — creates vortex at fighter position
+  boss.whirlpoolTimer-=dt;
+  if(boss.whirlpoolTimer<=0&&Math.random()<0.012){
+    boss.whirlpoolTimer=boss.enraged?5:8;sndWhirlpool();
+    boss.whirlpools.push({x:nearBot.x,y:nearBot.y,r:65,life:7,angle:0});
+    announceText='🐙 WHIRLPOOL!';announceTimer=1;announceColor='#0088ff';
+    spawnP(nearBot.x,nearBot.y,12,'#0088ff',100,3,0.5);}
+
+  // Tentacle grab — reaches out to grab distant targets
+  boss.tentacleGrabTimer-=dt;
+  if(!boss.tentacleGrabbing&&boss.tentacleGrabTimer<=0&&nearDist>100&&nearDist<280&&Math.random()<0.01){
+    boss.tentacleGrabbing=true;boss.tentacleGrabTarget=nearBot;
+    boss.tentacleGrabTimer=boss.enraged?4:7;sndTentacleGrab();shake=0.15;
+    announceText='🐙 TENTACLE GRAB!';announceTimer=1.2;announceColor='#0088ff';}
+
+  // Tentacle slam — AoE slam
+  boss.tentacleSlamTimer-=dt;
+  if(boss.tentacleSlamTimer<=0&&nearDist<180){
+    boss.tentacleSlamming=true;boss.tentacleSlamPhase=boss.enraged?0.5:0.7;
+    boss.tentacleSlamTimer=boss.enraged?4:7;sndKrakenRoar();shake=0.2;
+    announceText='🐙 TENTACLE SLAM!';announceTimer=1.2;announceColor='#0088ff';}
+
+  // Submerge — dives and reappears with a slam
+  boss.submergeCooldown-=dt;
+  if(boss.submergeCooldown<=0&&nearDist>200&&Math.random()<0.008){
+    boss.krakenSubmerged=true;boss.submergeTimer=boss.enraged?1.2:2;
+    boss.submergeCooldown=boss.enraged?8:14;sndWhirlpool();shake=0.15;
+    announceText='🐙 SUBMERGE!';announceTimer=1;announceColor='#0055aa';
+    spawnP(boss.x,boss.y,20,'#0055aa',150,4,0.6);
+    beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:'#0055aa',width:60,life:0.15,maxLife:0.15,isFlash:true});}
+
+  // Ambient bubbles
+  if(Math.random()<0.12){const ba=Math.random()*Math.PI*2;
+    parts.push({x:boss.x+Math.cos(ba)*boss.r*0.8,y:boss.y+Math.sin(ba)*boss.r*0.8,
+      vx:Math.cos(ba)*10+(Math.random()-0.5)*8,vy:-15-Math.random()*20,
+      color:Math.random()>0.5?'#0088ff':'#44aaff',size:1+Math.random()*2,life:0.6,maxLife:0.6,grav:-10,bounce:false});}
+}
+
 // ═══ BOT AI ═══
 function updateBot(b,dt){
   if(!b.alive){b.respawnT-=dt;
@@ -1851,12 +2089,12 @@ function drawMap(){
   const sx=Math.floor(cam.x/TILE),sy=Math.floor(cam.y/TILE),ex=Math.ceil((cam.x+W)/TILE),ey=Math.ceil((cam.y+H)/TILE);
   const t=performance.now()*0.001;
   // Arena-specific floor and wall colors
-  const arenaFloor=['#08080f','#0a0808','#08060f','#0a0a06','#060f0a'][arenaIdx];
-  const arenaGrid=['#0c0c16','#160c0c','#120c18','#14140c','#0c180e'][arenaIdx];
-  const arenaWall=['#181830','#301818','#281830','#302818','#183024'][arenaIdx];
-  const arenaWallFace=['#222244','#442222','#382244','#443822','#224438'][arenaIdx];
+  const arenaFloor=['#08080f','#0a0808','#08060f','#0a0a06','#060f0a','#040810'][arenaIdx];
+  const arenaGrid=['#0c0c16','#160c0c','#120c18','#14140c','#0c180e','#081420'][arenaIdx];
+  const arenaWall=['#181830','#301818','#281830','#302818','#183024','#102030'][arenaIdx];
+  const arenaWallFace=['#222244','#442222','#382244','#443822','#224438','#1a3050'][arenaIdx];
   const arenaEdgeGlow=[
-    'rgba(0,255,255,0.06)','rgba(255,68,0,0.06)','rgba(170,0,255,0.06)','rgba(255,170,0,0.06)','rgba(0,255,136,0.06)'
+    'rgba(0,255,255,0.06)','rgba(255,68,0,0.06)','rgba(170,0,255,0.06)','rgba(255,170,0,0.06)','rgba(0,255,136,0.06)','rgba(0,136,255,0.06)'
   ][arenaIdx];
   for(let y=Math.max(0,sy);y<Math.min(MH,ey);y++) for(let x=Math.max(0,sx);x<Math.min(MW,ex);x++){
     const px=x*TILE-cam.x,py=y*TILE-cam.y;
@@ -1916,6 +2154,32 @@ function drawArenaAmbient(t){
       ctx.stroke();ctx.globalAlpha=1;
     }
   }
+  // Deep Abyss — underwater ambiance with bubbles, caustics, and floating debris
+  if(arenaIdx===5){
+    // Rising bubble particles
+    if(Math.random()<0.06){
+      parts.push({x:Math.random()*MW*TILE,y:MH*TILE,vx:(Math.random()-0.5)*8,vy:-25-Math.random()*35,
+        color:Math.random()>0.5?'#0088ff':'#44aaff',size:1+Math.random()*2,life:3+Math.random()*3,maxLife:6,grav:-5,bounce:false});
+    }
+    // Caustic light patterns on floor
+    ctx.globalAlpha=0.02+Math.sin(t*0.8)*0.01;
+    for(let i=0;i<4;i++){
+      const cx3=W*0.2+i*W*0.2+Math.sin(t*0.5+i*1.5)*40;
+      const cy3=H*0.3+Math.cos(t*0.7+i*1.2)*30;
+      const cg=ctx.createRadialGradient(cx3,cy3,10,cx3,cy3,80);
+      cg.addColorStop(0,'rgba(0,136,255,0.08)');cg.addColorStop(1,'rgba(0,68,255,0)');
+      ctx.fillStyle=cg;ctx.beginPath();ctx.arc(cx3,cy3,80,0,Math.PI*2);ctx.fill();
+    }
+    ctx.globalAlpha=1;
+    // Faint seaweed sway lines
+    if(Math.random()<0.01){
+      const sx2=Math.random()*W,sy2=H*0.8+Math.random()*H*0.2;
+      ctx.globalAlpha=0.04;ctx.strokeStyle='#006644';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(sx2,sy2);
+      ctx.quadraticCurveTo(sx2+Math.sin(t*2)*15,sy2-20,sx2+Math.sin(t*3)*10,sy2-40);
+      ctx.stroke();ctx.globalAlpha=1;
+    }
+  }
 }
 
 function drawBot(b){
@@ -1970,6 +2234,7 @@ function drawBoss(){
   else if(bt.id==='phoenix') drawBossPhoenix();
   else if(bt.id==='golem') drawBossGolem();
   else if(bt.id==='wraith') drawBossWraith();
+  else if(bt.id==='kraken') drawBossKraken();
 }
 
 function drawBossLabel(sx,sy,R){
@@ -2825,6 +3090,201 @@ function drawBossWraith(){
   drawBossLabel(sx,sy,R);
 }
 
+// ═══ STORM KRAKEN DRAWING ═══
+function drawBossKraken(){
+  if(boss.krakenSubmerged){
+    // Draw ripple effect at boss position when submerged
+    const sx=boss.x-cam.x,sy=boss.y-cam.y;
+    if(sx>-100&&sx<W+100&&sy>-100&&sy<H+100){
+      const t=performance.now()*0.001;
+      ctx.globalAlpha=0.08+Math.sin(t*4)*0.04;
+      for(let ring=0;ring<3;ring++){
+        ctx.strokeStyle='#0055aa';ctx.lineWidth=2;
+        ctx.beginPath();ctx.arc(sx,sy,20+ring*18+Math.sin(t*3+ring)*5,0,Math.PI*2);ctx.stroke();}
+      ctx.globalAlpha=1;}
+    // Still draw whirlpools and ink clouds
+    drawKrakenEffects();
+    return;
+  }
+  const sx=boss.x-cam.x,sy=boss.y-cam.y;
+  if(sx<-200||sx>W+200||sy<-200||sy>H+200)return;
+  const t=performance.now()*0.001,R=boss.r,flash=boss.flashTimer>0,enr=boss.enraged;
+
+  drawKrakenEffects();
+
+  // Draw tentacle grab beam
+  if(boss.tentacleGrabbing&&boss.tentacleGrabTarget&&boss.tentacleGrabTarget.alive){
+    const gt=boss.tentacleGrabTarget;const gx=gt.x-cam.x,gy=gt.y-cam.y;
+    ctx.globalAlpha=0.6;ctx.strokeStyle='#0088ff';ctx.lineWidth=4;ctx.shadowColor='#0088ff';ctx.shadowBlur=8;
+    ctx.beginPath();ctx.moveTo(sx,sy);
+    // Wavy tentacle line
+    const dx=gx-sx,dy=gy-sy,len=Math.hypot(dx,dy);
+    const steps=10;
+    for(let i=1;i<=steps;i++){const f=i/steps;
+      const bx=sx+dx*f+(Math.sin(t*8+i*1.5))*12*(1-Math.abs(f-0.5)*2);
+      const by=sy+dy*f+(Math.cos(t*7+i*2))*12*(1-Math.abs(f-0.5)*2);
+      ctx.lineTo(bx,by);}
+    ctx.stroke();ctx.shadowBlur=0;ctx.globalAlpha=1;
+  }
+
+  ctx.save();ctx.translate(sx,sy);ctx.rotate(boss.angle);
+
+  // Aura
+  if(enr){ctx.globalAlpha=0.07+Math.sin(t*5)*0.03;ctx.fillStyle='#0088ff';ctx.beginPath();ctx.arc(0,0,R*3.5,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+  const ag=ctx.createRadialGradient(0,0,R*0.3,0,0,R*(enr?4:3));ag.addColorStop(0,`rgba(0,136,255,${enr?0.2:0.1})`);ag.addColorStop(1,'rgba(0,136,255,0)');
+  ctx.fillStyle=ag;ctx.beginPath();ctx.arc(0,0,R*(enr?4:3),0,Math.PI*2);ctx.fill();
+
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.35)';ctx.beginPath();ctx.ellipse(0,6,R+8,R*0.35,0,0,Math.PI*2);ctx.fill();
+
+  // Tentacles — 6 writhing appendages
+  (boss.tentacles||[]).forEach((tent,i)=>{
+    const ta=tent.angle-boss.angle; // Local angle
+    const tLen=tent.length*(boss.tentacleSlamming?1.5:1);
+    const segments=6;
+    ctx.strokeStyle=flash?'#fff':enr?'#0066cc':'#0055aa';ctx.lineWidth=5-i*0.3;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(Math.cos(ta)*R*0.7,Math.sin(ta)*R*0.7);
+    for(let s=1;s<=segments;s++){
+      const f=s/segments;
+      const segLen=tLen*f;
+      const waveOff=Math.sin(tent.anim+s*0.8)*8*(1-f*0.3);
+      const perpA=ta+Math.PI/2;
+      const px=Math.cos(ta)*R*0.7+Math.cos(ta)*segLen+Math.cos(perpA)*waveOff;
+      const py=Math.sin(ta)*R*0.7+Math.sin(ta)*segLen+Math.sin(perpA)*waveOff;
+      ctx.lineTo(px,py);
+    }
+    ctx.stroke();
+    // Suction cups (dots along tentacle)
+    ctx.fillStyle=flash?'#ccc':'#003366';
+    for(let s=1;s<=4;s++){
+      const f=s/5;const segLen=tLen*f;
+      const waveOff=Math.sin(tent.anim+s*0.8)*8*(1-f*0.3);
+      const perpA=ta+Math.PI/2;
+      const cx2=Math.cos(ta)*R*0.7+Math.cos(ta)*segLen+Math.cos(perpA)*waveOff;
+      const cy2=Math.sin(ta)*R*0.7+Math.sin(ta)*segLen+Math.sin(perpA)*waveOff;
+      ctx.beginPath();ctx.arc(cx2,cy2,1.5,0,Math.PI*2);ctx.fill();}
+    // Tentacle tip glow
+    const tipF=1;const tipLen=tLen;const tipWave=Math.sin(tent.anim+segments*0.8)*8*0.7;
+    const tipPA=ta+Math.PI/2;
+    const tipX=Math.cos(ta)*R*0.7+Math.cos(ta)*tipLen+Math.cos(tipPA)*tipWave;
+    const tipY=Math.sin(ta)*R*0.7+Math.sin(ta)*tipLen+Math.sin(tipPA)*tipWave;
+    ctx.fillStyle=enr?'#4488ff':'#0088ff';ctx.shadowColor='#0088ff';ctx.shadowBlur=4;
+    ctx.beginPath();ctx.arc(tipX,tipY,3,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+  });
+
+  // Body — bulbous mantle
+  ctx.fillStyle=flash?'#fff':enr?'#0066cc':'#0055aa';ctx.shadowColor=enr?'#0088ff':'#0055aa';ctx.shadowBlur=enr?20:10;
+  // Mantle (back dome)
+  ctx.beginPath();
+  ctx.moveTo(-R*0.3,-R*0.4);
+  ctx.quadraticCurveTo(-R*0.7,-R*0.3,-R*0.7,0);
+  ctx.quadraticCurveTo(-R*0.7,R*0.3,-R*0.3,R*0.4);
+  ctx.lineTo(R*0.1,R*0.35);
+  ctx.quadraticCurveTo(R*0.3,R*0.15,R*0.3,0);
+  ctx.quadraticCurveTo(R*0.3,-R*0.15,R*0.1,-R*0.35);
+  ctx.closePath();ctx.fill();ctx.shadowBlur=0;
+
+  // Mantle ridges
+  ctx.strokeStyle=flash?'#aaddff':'#003366';ctx.lineWidth=1;ctx.globalAlpha=0.4;
+  for(let i=0;i<3;i++){const rx=-R*0.5+i*R*0.15;
+    ctx.beginPath();ctx.moveTo(rx,-R*0.25*(1-i*0.15));
+    ctx.quadraticCurveTo(rx-R*0.05,0,rx,R*0.25*(1-i*0.15));ctx.stroke();}
+  ctx.globalAlpha=1;
+
+  // Head/face area — larger front section
+  ctx.fillStyle=flash?'#fff':enr?'#0077dd':'#0066bb';
+  ctx.beginPath();ctx.ellipse(R*0.15,0,R*0.35,R*0.38,0,0,Math.PI*2);ctx.fill();
+
+  // Bioluminescent spots
+  const spotGlow=0.4+Math.sin(t*3)*0.2;
+  ctx.fillStyle=`rgba(68,170,255,${spotGlow})`;ctx.shadowColor='#44aaff';ctx.shadowBlur=5;
+  const spots=[[-0.4,-0.2],[-0.45,0.15],[-0.3,0],[-0.55,-0.08],[-0.55,0.08]];
+  spots.forEach(([spx,spy])=>{ctx.beginPath();ctx.arc(R*spx,R*spy,2+Math.sin(t*4+spx*5)*0.5,0,Math.PI*2);ctx.fill();});
+  ctx.shadowBlur=0;
+
+  // Eyes — large, alien
+  const eg=enr?'#ff4444':'#44aaff';
+  for(let s=-1;s<=1;s+=2){const ex=R*0.25,ey=s*R*0.15;
+    // Dark socket
+    ctx.fillStyle='#001122';ctx.beginPath();ctx.ellipse(ex,ey,6,5,0,0,Math.PI*2);ctx.fill();
+    // Eye
+    ctx.fillStyle=flash?'#fff':eg;ctx.shadowColor=eg;ctx.shadowBlur=enr?12:6;
+    ctx.beginPath();ctx.ellipse(ex,ey,5,4,0,0,Math.PI*2);ctx.fill();
+    // W-shaped pupil (cuttlefish-like)
+    ctx.fillStyle='#000';ctx.beginPath();
+    ctx.moveTo(ex-3,ey);ctx.lineTo(ex-1.5,ey-1.5);ctx.lineTo(ex,ey);ctx.lineTo(ex+1.5,ey-1.5);ctx.lineTo(ex+3,ey);
+    ctx.lineTo(ex+1.5,ey+1.5);ctx.lineTo(ex,ey);ctx.lineTo(ex-1.5,ey+1.5);ctx.closePath();ctx.fill();
+    ctx.shadowBlur=0;}
+
+  // Beak
+  const beakOpen=(boss.clawAnim||0)*4;
+  ctx.fillStyle=flash?'#fff':'#002244';
+  ctx.beginPath();ctx.moveTo(R*0.45,-beakOpen);ctx.lineTo(R*0.55,0);ctx.lineTo(R*0.45,beakOpen);ctx.closePath();ctx.fill();
+  // Beak edge
+  ctx.strokeStyle=enr?'#0088ff':'#003366';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(R*0.45,-beakOpen-2);ctx.lineTo(R*0.58,0);ctx.lineTo(R*0.45,beakOpen+2);ctx.stroke();
+
+  // Siphon (jet propulsion tube) at back
+  ctx.fillStyle=flash?'#ccc':'#004477';
+  ctx.beginPath();ctx.moveTo(-R*0.6,-R*0.1);ctx.lineTo(-R*0.75,0);ctx.lineTo(-R*0.6,R*0.1);ctx.closePath();ctx.fill();
+  // Jet particles when moving
+  if(Math.random()<0.2){
+    parts.push({x:boss.x+Math.cos(boss.angle+Math.PI)*R*0.75,y:boss.y+Math.sin(boss.angle+Math.PI)*R*0.75,
+      vx:Math.cos(boss.angle+Math.PI)*60+(Math.random()-0.5)*20,vy:Math.sin(boss.angle+Math.PI)*60+(Math.random()-0.5)*20,
+      color:'#44aaff',size:1.5+Math.random(),life:0.3,maxLife:0.3,grav:0,bounce:false});}
+
+  // Tentacle slam windup visual
+  if(boss.tentacleSlamming){
+    ctx.globalAlpha=0.25;ctx.fillStyle='#0088ff';ctx.beginPath();ctx.arc(0,0,R*2,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+
+  ctx.restore();
+  drawBossLabel(sx,sy,R);
+}
+
+function drawKrakenEffects(){
+  // Draw ink clouds
+  (boss.inkClouds||[]).forEach(ic=>{
+    const icx=ic.x-cam.x,icy=ic.y-cam.y;
+    const t=performance.now()*0.001;
+    ctx.globalAlpha=0.35*(ic.life/8);
+    // Multi-layer cloud for volume
+    for(let layer=0;layer<3;layer++){
+      const lr=ic.r*(0.6+layer*0.2)+Math.sin(t*2+layer)*5;
+      const lox=Math.sin(t*1.5+layer*2)*8;const loy=Math.cos(t*1.2+layer*1.7)*6;
+      const ig=ctx.createRadialGradient(icx+lox,icy+loy,lr*0.2,icx+lox,icy+loy,lr);
+      ig.addColorStop(0,'#001133');ig.addColorStop(0.5,'#001122');ig.addColorStop(1,'rgba(0,17,51,0)');
+      ctx.fillStyle=ig;ctx.beginPath();ctx.arc(icx+lox,icy+loy,lr,0,Math.PI*2);ctx.fill();
+    }
+    ctx.globalAlpha=1;});
+
+  // Draw whirlpools
+  (boss.whirlpools||[]).forEach(wp=>{
+    const wpx=wp.x-cam.x,wpy=wp.y-cam.y;
+    const t=performance.now()*0.001;
+    const la=Math.min(1,wp.life/1.5);
+    ctx.globalAlpha=la*0.25;
+    // Spiral lines
+    ctx.strokeStyle='#0088ff';ctx.lineWidth=1.5;
+    for(let arm=0;arm<4;arm++){
+      ctx.beginPath();
+      for(let s=0;s<20;s++){
+        const f=s/20;const a=wp.angle+arm*Math.PI/2+f*Math.PI*3;
+        const r=f*wp.r;
+        ctx.lineTo(wpx+Math.cos(a)*r,wpy+Math.sin(a)*r);}
+      ctx.stroke();
+    }
+    // Center glow
+    ctx.globalAlpha=la*0.15;
+    const wg=ctx.createRadialGradient(wpx,wpy,0,wpx,wpy,wp.r);
+    wg.addColorStop(0,'#0088ff');wg.addColorStop(1,'rgba(0,136,255,0)');
+    ctx.fillStyle=wg;ctx.beginPath();ctx.arc(wpx,wpy,wp.r,0,Math.PI*2);ctx.fill();
+    // Outer ring
+    ctx.strokeStyle='#44aaff';ctx.lineWidth=1;ctx.globalAlpha=la*0.3;
+    ctx.beginPath();ctx.arc(wpx,wpy,wp.r,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=1;
+  });
+}
+
 function drawWraithClones(){
   (boss.shadowClones||[]).forEach(cl=>{
     const cx=cl.x-cam.x,cy=cl.y-cam.y;
@@ -3150,8 +3610,32 @@ function showTourneyEnd(){
   document.getElementById('te-sub').textContent=(champCfg?champCfg.title:'')+ ` — ${champ[1].w}W ${champ[1].l}L`;
   document.getElementById('te-standings').innerHTML=sorted.map(([name,s],i)=>{
     const cfg=botConfigs.find(c=>c.name===name);const c=cfg?cfg.color:'#888';
-    return `<div class="te-row"><span class="rank">#${i+1}</span><span class="tname" style="color:${esc(c)}">${esc(name)}</span><span class="tw">${s.w}W</span><span class="tl">${s.l}L</span></div>`;
+    const medal=i===0?'👑':i===1?'🥈':i===2?'🥉':'';
+    return `<div class="te-row" style="animation:fadeSlideIn 0.3s ease-out forwards;animation-delay:${i*0.1}s;opacity:0"><span class="rank">${medal||'#'+(i+1)}</span><span class="tname" style="color:${esc(c)}">${esc(name)}</span><span class="tw">${s.w}W</span><span class="tl">${s.l}L</span></div>`;
   }).join('');
+  // Confetti burst for champion
+  if(champCfg){
+    spawnTourneyConfetti(champCfg.color);
+  }
+}
+function spawnTourneyConfetti(champColor){
+  const el=document.getElementById('tourney-end');
+  const confettiContainer=document.createElement('div');
+  confettiContainer.style.cssText='position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0';
+  confettiContainer.id='confetti-container';
+  // Remove old confetti
+  const old=el.querySelector('#confetti-container');if(old)old.remove();
+  el.appendChild(confettiContainer);
+  const colors=[champColor,'#ff00ff','#00ffff','#ffff00','#ff4400','#00ff88','#ffffff'];
+  for(let i=0;i<60;i++){
+    const c=document.createElement('div');
+    const color=colors[Math.floor(Math.random()*colors.length)];
+    const x=Math.random()*100;const delay=Math.random()*2;const dur=2+Math.random()*3;
+    const size=3+Math.random()*5;const rot=Math.random()*360;
+    c.style.cssText=`position:absolute;left:${x}%;top:-10px;width:${size}px;height:${size*0.6}px;background:${color};opacity:0.8;
+      animation:confettiFall ${dur}s ease-in forwards;animation-delay:${delay}s;transform:rotate(${rot}deg);border-radius:1px;`;
+    confettiContainer.appendChild(c);
+  }
 }
 
 document.getElementById('replayBtn').addEventListener('click',()=>{
