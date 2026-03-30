@@ -1874,13 +1874,14 @@ function drawMap(){
   drawArenaAmbient(t);
 }
 
+function hexToRgba(hex,a){const c=hex.replace('#','');const r=parseInt(c.length===3?c[0]+c[0]:c.slice(0,2),16);const g=parseInt(c.length===3?c[1]+c[1]:c.slice(2,4),16);const b=parseInt(c.length===3?c[2]+c[2]:c.slice(4,6),16);return `rgba(${r},${g},${b},${a})`;}
 function drawArenaAmbient(t){
   // Subtle animated center glow per arena
   const cx=MW*TILE/2-cam.x, cy=MH*TILE/2-cam.y;
   const col=ARENA_COLORS[arenaIdx];
   const pulse=0.02+Math.sin(t*1.5)*0.01;
   const g=ctx.createRadialGradient(cx,cy,20,cx,cy,200);
-  g.addColorStop(0,col.slice(0,-1)+','+pulse+')');g.addColorStop(1,'rgba(0,0,0,0)');
+  g.addColorStop(0,hexToRgba(col,pulse));g.addColorStop(1,'rgba(0,0,0,0)');
   ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,200,0,Math.PI*2);ctx.fill();
   // Subtle directional scan lines for Crucible
   if(arenaIdx===1){
