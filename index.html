@@ -343,6 +343,14 @@ const sndTentacleSlam = () => { snd(60, 0.3, 'sawtooth', 0.14); snd(40, 0.4, 'sq
 const sndInkShot = () => { snd(250, 0.1, 'square', 0.08); snd(180, 0.12, 'triangle', 0.05); };
 const sndWhirlpool = () => { snd(80, 0.4, 'sine', 0.1); snd(120, 0.3, 'triangle', 0.07); snd(60, 0.5, 'sine', 0.05); };
 const sndTentacleGrab = () => { snd(100, 0.2, 'sawtooth', 0.1); snd(70, 0.25, 'square', 0.07); };
+const sndMechaRoar = () => { snd(45, 0.6, 'square', 0.16); snd(90, 0.4, 'sawtooth', 0.1); snd(30, 0.7, 'triangle', 0.08); };
+const sndLaserCharge = () => { snd(200, 0.3, 'sine', 0.08); snd(400, 0.2, 'sine', 0.06); snd(600, 0.15, 'sine', 0.04); };
+const sndLaserFire = () => { snd(100, 0.4, 'sawtooth', 0.14); snd(1500, 0.08, 'square', 0.08); snd(50, 0.5, 'square', 0.1); };
+const sndMissileLaunch = () => { snd(180, 0.12, 'sawtooth', 0.08); snd(300, 0.08, 'triangle', 0.05); };
+const sndEMPPulse = () => { snd(60, 0.5, 'sine', 0.15); snd(120, 0.3, 'triangle', 0.1); snd(30, 0.6, 'square', 0.08); };
+const sndMechaStep = () => { snd(40, 0.15, 'square', 0.1); snd(25, 0.2, 'sawtooth', 0.06); };
+const sndMechaShield = () => { snd(500, 0.2, 'sine', 0.08); snd(700, 0.15, 'triangle', 0.06); snd(300, 0.25, 'sine', 0.04); };
+const sndMechaJet = () => { snd(80, 0.3, 'sawtooth', 0.12); snd(120, 0.2, 'square', 0.08); };
 const sndVS = () => { snd(300, 0.15, 'sine', 0.1); snd(450, 0.12, 'sine', 0.08); setTimeout(()=>snd(600,0.2,'sine',0.1),100); };
 const sndPowerup = () => { snd(400,0.1,'sine',0.12);snd(600,0.08,'sine',0.1);setTimeout(()=>snd(800,0.12,'sine',0.1),60);setTimeout(()=>snd(1000,0.1,'sine',0.08),120); };
 
@@ -358,8 +366,8 @@ const WPN_MAP = { rocket:0, railgun:1, shotgun:2, lightning:3 };
 // ═══ MAP ═══
 const TILE = 28, MW = 40, MH = 30;
 let map = [], arenaIdx = 0, hazards = [], dmgPopups = [];
-const ARENA_NAMES = ['THE CAGE','CRUCIBLE','LABYRINTH','COLOSSEUM','VOIDRIFT','DEEP ABYSS'];
-const ARENA_COLORS = ['#0ff','#ff4400','#aa00ff','#ffaa00','#00ff88','#0088ff'];
+const ARENA_NAMES = ['THE CAGE','CRUCIBLE','LABYRINTH','COLOSSEUM','VOIDRIFT','DEEP ABYSS','FROZEN CITADEL'];
+const ARENA_COLORS = ['#0ff','#ff4400','#aa00ff','#ffaa00','#00ff88','#0088ff','#88ddff'];
 
 function genMap() {
   map = []; hazards = [];
@@ -441,6 +449,25 @@ function genMap() {
     hazards.push({type:'electric',x:(MW-8)*TILE,y:MH/2*TILE,r:50,dmg:7});
     // Deep trench lava in center bottom
     hazards.push({type:'lava',x:MW/2*TILE,y:(MH-4)*TILE,r:55,dmg:10});
+  } else if(arenaIdx===6){
+    // FROZEN CITADEL — icy fortress with crystal pillars and freeze zones
+    // Central ice bridge
+    box(17,14,6,1); box(17,16,6,1);
+    // Crystal pillars in symmetric pattern
+    box(8,7,2,2); box(MW-10,7,2,2); box(8,MH-9,2,2); box(MW-10,MH-9,2,2);
+    // Fortress walls
+    box(13,4,1,5); box(MW-14,4,1,5); box(13,MH-9,1,5); box(MW-14,MH-9,1,5);
+    // Side alcoves
+    box(5,12,2,1); box(5,MH-13,2,1); box(MW-7,12,2,1); box(MW-7,MH-13,2,1);
+    // Center tower pillars
+    box(19,11,2,1); box(19,MH-12,2,1);
+    // Corner bastions
+    box(3,3,2,2); box(MW-5,3,2,2); box(3,MH-5,2,2); box(MW-5,MH-5,2,2);
+    // Ice hazards — freeze zones that slow bots
+    hazards.push({type:'ice',x:12*TILE,y:MH/2*TILE,r:55,dmg:3});
+    hazards.push({type:'ice',x:(MW-12)*TILE,y:MH/2*TILE,r:55,dmg:3});
+    hazards.push({type:'ice',x:MW/2*TILE,y:5*TILE,r:45,dmg:4});
+    hazards.push({type:'ice',x:MW/2*TILE,y:(MH-5)*TILE,r:45,dmg:4});
   }
 }
 
@@ -530,10 +557,19 @@ function updateHazards(dt){
   hazards.forEach(h=>{
     bots.forEach(b=>{
       if(!b.alive)return;
-      if(Math.hypot(b.x-h.x,b.y-h.y)<h.r+b.r){
+      const hdist=Math.hypot(b.x-h.x,b.y-h.y);
+      if(hdist<h.r+b.r){
         const d=h.dmg*dt;
         hurtBot(b,d,null);
-        if(Math.random()<0.3){
+        // Ice hazards slow bots by pulling toward center and reducing effective speed
+        if(h.type==='ice'&&hdist>5){
+          const ia=Math.atan2(h.y-b.y,h.x-b.x);
+          b.x+=Math.cos(ia)*25*dt;b.y+=Math.sin(ia)*25*dt;
+          // Frost visual on bot
+          if(Math.random()<0.2)parts.push({x:b.x+(Math.random()-0.5)*8,y:b.y+(Math.random()-0.5)*8,vx:(Math.random()-0.5)*15,vy:-10-Math.random()*20,
+            color:Math.random()>0.5?'#88ddff':'#ffffff',size:1.5+Math.random(),life:0.35,maxLife:0.35,grav:-8,bounce:false});
+        }
+        else if(Math.random()<0.3){
           if(h.type==='lava') parts.push({x:b.x+(Math.random()-0.5)*8,y:b.y-Math.random()*12,vx:(Math.random()-0.5)*20,vy:-30-Math.random()*40,color:'#ff4400',size:2,life:0.3,maxLife:0.3,grav:-30,bounce:false});
           else parts.push({x:b.x+(Math.random()-0.5)*10,y:b.y+(Math.random()-0.5)*10,vx:(Math.random()-0.5)*40,vy:(Math.random()-0.5)*40,color:'#8866ff',size:1.5,life:0.2,maxLife:0.2,grav:0,bounce:false});
         }
@@ -555,6 +591,32 @@ function drawHazards(){
       for(let i=0;i<3;i++){const ba=t*1.5+i*2.1,bx=sx+Math.cos(ba)*h.r*0.4,by=sy+Math.sin(ba)*h.r*0.4;
         ctx.fillStyle=`rgba(255,${100+Math.sin(t*3+i)*50|0},0,${0.3+Math.sin(t*4+i)*0.15})`;
         ctx.beginPath();ctx.arc(bx,by-Math.abs(Math.sin(t*5+i))*5,2+Math.sin(t*3+i),0,Math.PI*2);ctx.fill();}
+    } else if(h.type==='ice'){
+      // Ice freeze zone — frosty blue with crystalline edges
+      const ig=ctx.createRadialGradient(sx,sy,0,sx,sy,h.r);
+      ig.addColorStop(0,'rgba(136,221,255,0.25)');ig.addColorStop(0.4,'rgba(100,200,255,0.12)');ig.addColorStop(1,'rgba(136,221,255,0)');
+      ctx.fillStyle=ig;ctx.beginPath();ctx.arc(sx,sy,h.r,0,Math.PI*2);ctx.fill();
+      // Frost crystal pattern
+      ctx.globalAlpha=0.15+Math.sin(t*2)*0.05;
+      ctx.strokeStyle='#aaeeff';ctx.lineWidth=0.8;
+      for(let i=0;i<6;i++){
+        const ca=i*Math.PI/3+t*0.2;
+        ctx.beginPath();ctx.moveTo(sx,sy);
+        let fx=sx+Math.cos(ca)*h.r*0.7,fy=sy+Math.sin(ca)*h.r*0.7;
+        ctx.lineTo(fx,fy);
+        // Branch
+        const bl=h.r*0.25;
+        ctx.moveTo(fx,fy);ctx.lineTo(fx+Math.cos(ca+0.6)*bl,fy+Math.sin(ca+0.6)*bl);
+        ctx.moveTo(fx,fy);ctx.lineTo(fx+Math.cos(ca-0.6)*bl,fy+Math.sin(ca-0.6)*bl);
+        ctx.stroke();
+      }
+      // Central snowflake glow pulse
+      ctx.fillStyle=`rgba(200,240,255,${0.08+Math.sin(t*3)*0.04})`;ctx.beginPath();ctx.arc(sx,sy,h.r*0.3,0,Math.PI*2);ctx.fill();
+      // Floating ice motes
+      for(let i=0;i<2;i++){const ma=t*1.2+i*3.1,md=h.r*0.5;
+        const mx=sx+Math.cos(ma)*md,my=sy+Math.sin(ma)*md;
+        ctx.fillStyle='rgba(200,240,255,0.4)';ctx.beginPath();ctx.arc(mx,my-Math.abs(Math.sin(t*4+i))*4,1.5,0,Math.PI*2);ctx.fill();}
+      ctx.globalAlpha=1;
     } else {
       // Electric zone
       ctx.globalAlpha=0.1+Math.sin(t*6)*0.05;
@@ -752,6 +814,15 @@ function hurtBot(bot, dmg, attacker) {
     // Shockwave ring effect
     for(let r=0;r<3;r++){
       beams.push({x1:bot.x,y1:bot.y,x2:bot.x,y2:bot.y,color:bot.color,width:30+r*25,life:0.2+r*0.08,maxLife:0.2+r*0.08,isFlash:true});}
+    // Ghost/soul rising effect
+    for(let g=0;g<5;g++){
+      parts.push({x:bot.x+(Math.random()-0.5)*10,y:bot.y,vx:(Math.random()-0.5)*12,vy:-50-Math.random()*60,
+        color:'rgba(255,255,255,0.6)',size:3+Math.random()*3,life:1.2+g*0.15,maxLife:1.5,grav:-40,bounce:false});}
+    // Spiraling soul wisps
+    for(let w=0;w<8;w++){
+      const wa=w*Math.PI*2/8,wsp=40+Math.random()*30;
+      parts.push({x:bot.x+Math.cos(wa)*5,y:bot.y+Math.sin(wa)*5,vx:Math.cos(wa)*wsp,vy:-35-Math.random()*25+Math.sin(wa)*wsp*0.3,
+        color:bot.color,size:2+Math.random()*1.5,life:1+Math.random()*0.5,maxLife:1.5,grav:-25,bounce:false});}
     // Slow-mo on kill
     triggerSlowMo(0.4);
     lastKillTime=gameTime;
@@ -785,6 +856,7 @@ const BOSS_TYPES = [
   { id:'golem', name:'CRYSTAL GOLEM', icon:'💎', color:'#44ddff', accentColor:'#2288cc', hpBase:1100, hpScale:280, spdBase:50, spdScale:5, radius:52 },
   { id:'wraith', name:'SHADOW WRAITH', icon:'👻', color:'#8844cc', accentColor:'#5522aa', hpBase:700, hpScale:170, spdBase:90, spdScale:10, radius:40 },
   { id:'kraken', name:'STORM KRAKEN', icon:'🐙', color:'#0088ff', accentColor:'#0055aa', hpBase:950, hpScale:240, spdBase:60, spdScale:6, radius:50 },
+  { id:'mecha', name:'MECHA TITAN', icon:'🤖', color:'#ff2266', accentColor:'#cc0044', hpBase:1000, hpScale:260, spdBase:55, spdScale:5, radius:50 },
 ];
 let bossTypeIdx = 0;
 
@@ -841,7 +913,16 @@ function initBoss() {
     whirlpoolTimer:0, whirlpools:[],
     tentacleSlamTimer:0, tentacleSlamming:false, tentacleSlamPhase:0,
     inkBoltTimer:0, tidalWaveTimer:0, tidalWaving:false, tidalWaveAngle:0,
-    krakenSubmerged:false, submergeTimer:0, submergeCooldown:0
+    krakenSubmerged:false, submergeTimer:0, submergeCooldown:0,
+    // Mecha Titan-specific
+    mechaLaserTimer:0, mechaLaserFiring:false, mechaLaserAngle:0, mechaLaserDuration:0, mechaLaserSweepDir:1,
+    mechaMissileTimer:0, mechaMissiles:[], mechaMissileBarrage:false, mechaBarrageCount:0,
+    mechaEMPTimer:0, mechaEMPCooldown:0, mechaEMPRings:[],
+    mechaShieldActive:false, mechaShieldHp:0, mechaShieldTimer:0, mechaShieldCooldown:0,
+    mechaJetTimer:0, mechaJetting:false, mechaJetTarget:null, mechaJetPhase:0,
+    mechaStompTimer:0, mechaStomping:false, mechaStompPhase:0,
+    mechaGears:[], mechaGearTimer:0, mechaOverheat:0, mechaVentTimer:0,
+    mechaTurretAngle:0, mechaCoreGlow:0, mechaStepAnim:0
   };
   // Init kraken tentacles
   if(bt.id==='kraken'){
@@ -895,7 +976,7 @@ function hurtBoss(dmg,attacker){
     beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:bt.color,width:120,life:0.3,maxLife:0.3,isFlash:true});
     for(let i=0;i<10;i++){const a=Math.random()*Math.PI*2,sp=100+Math.random()*200;
       parts.push({x:boss.x,y:boss.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color:i%2?bt.color:bt.accentColor,size:5+Math.random()*5,life:2,maxLife:2,grav:120,bounce:true});}
-    boss.webTraps=[];boss.spiderlings=[];boss.venomPools=[];boss.fireTrails=[];boss.crystalWalls=[];boss.crystalShards=[];boss.quakeRings=[];boss.shadowClones=[];boss.wraithTrails=[];boss.inkClouds=[];boss.whirlpools=[];
+    boss.webTraps=[];boss.spiderlings=[];boss.venomPools=[];boss.fireTrails=[];boss.crystalWalls=[];boss.crystalShards=[];boss.quakeRings=[];boss.shadowClones=[];boss.wraithTrails=[];boss.inkClouds=[];boss.whirlpools=[];boss.mechaMissiles=[];boss.mechaEMPRings=[];boss.mechaGears=[];
     document.getElementById('boss-bar').style.display='none';
   } else {
     const fill=document.getElementById('boss-hp-fill');
@@ -922,6 +1003,7 @@ function updateBoss(dt){
         // Init 6 tentacles
         for(let i=0;i<6;i++){const ta=i*Math.PI*2/6;boss.tentacles.push({baseAngle:ta,angle:ta,length:boss.r+25+Math.random()*15,anim:Math.random()*Math.PI*2,active:true});}
       }
+      if(bt.id==='mecha'){boss.mechaMissiles=[];boss.mechaEMPRings=[];boss.mechaGears=[];boss.mechaLaserFiring=false;boss.mechaJetting=false;boss.mechaStomping=false;boss.mechaShieldActive=false;boss.mechaOverheat=0;boss.mechaMissileBarrage=false;}
       announceText=`${bt.icon} BOSS RETURNS!`;announceTimer=2.5;announceColor=bt.color;sndBossRoar();
       spawnP(boss.x,boss.y,25,bt.color,200,5,1);
       document.getElementById('boss-bar').style.display='block';
@@ -929,7 +1011,21 @@ function updateBoss(dt){
       document.getElementById('boss-hp-fill').style.background=`linear-gradient(90deg,${bt.accentColor},${bt.color})`;
     } return;
   }
-  boss.legAnim+=dt*6; boss.enraged=boss.hp<boss.maxHp*0.35;
+  boss.legAnim+=dt*6;
+  const wasEnraged=boss.enraged;
+  boss.enraged=boss.hp<boss.maxHp*0.35;
+  // Enrage transition flash
+  if(!wasEnraged&&boss.enraged){
+    shake=0.6;announceText=`${bt.icon} ENRAGED!`;announceTimer=2.5;announceColor='#ff0000';
+    beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:'#ff0000',width:150,life:0.3,maxLife:0.3,isFlash:true});
+    spawnP(boss.x,boss.y,30,'#ff0000',250,4,1);spawnP(boss.x,boss.y,20,bt.color,200,3,0.8);
+    // Red ring burst
+    for(let r2=0;r2<4;r2++)beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:'#ff2200',width:50+r2*35,life:0.1+r2*0.06,maxLife:0.1+r2*0.06,isFlash:true});
+    if(bt.id==='lobster')sndBossRoar();else if(bt.id==='spider')sndSpiderHiss();else if(bt.id==='serpent')sndSerpentHiss();
+    else if(bt.id==='dragon')sndDragonRoar();else if(bt.id==='phoenix')sndPhoenixCry();else if(bt.id==='golem')sndGolemRoar();
+    else if(bt.id==='wraith')sndWraithMoan();else if(bt.id==='kraken')sndKrakenRoar();else if(bt.id==='mecha')sndMechaRoar();
+    triggerSlowMo(0.5);
+  }
   if(boss.flashTimer>0)boss.flashTimer-=dt;
 
   if(bt.id==='lobster') updateBossLobster(dt);
@@ -940,6 +1036,7 @@ function updateBoss(dt){
   else if(bt.id==='golem') updateBossGolem(dt);
   else if(bt.id==='wraith') updateBossWraith(dt);
   else if(bt.id==='kraken') updateBossKraken(dt);
+  else if(bt.id==='mecha') updateBossMecha(dt);
 
   // Ambient particles
   if(Math.random()<0.12){const pa=Math.random()*Math.PI*2;
@@ -1625,6 +1722,14 @@ hurtBoss = function(dmg, attacker) {
   if(boss&&boss.alive&&BOSS_TYPES[bossTypeIdx].id==='wraith'&&boss.vanished)return;
   // Kraken: immune while submerged
   if(boss&&boss.alive&&BOSS_TYPES[bossTypeIdx].id==='kraken'&&boss.krakenSubmerged)return;
+  // Mecha: shield absorbs damage
+  if(boss&&boss.alive&&BOSS_TYPES[bossTypeIdx].id==='mecha'&&boss.mechaShieldActive){
+    boss.mechaShieldHp-=dmg;if(dmg>5)spawnDmgPopup(boss.x,boss.y-boss.r,dmg,'#ff2266');
+    boss.flashTimer=0.05;spawnP(boss.x+(Math.random()-0.5)*20,boss.y+(Math.random()-0.5)*20,3,'#ff2266',60,2,0.2);
+    if(boss.mechaShieldHp<=0){boss.mechaShieldActive=false;sndCrystalShatter();shake=0.25;
+      spawnP(boss.x,boss.y,20,'#ff2266',150,4,0.5);
+      announceText='🤖 SHIELD OFFLINE!';announceTimer=1.5;announceColor='#ff4444';}
+    return;}
   if(boss&&boss.alive&&BOSS_TYPES[bossTypeIdx].id==='golem'&&boss.shieldActive){
     boss.shieldHp-=dmg;if(dmg>5)spawnDmgPopup(boss.x,boss.y-boss.r,dmg,'#44ddff');
     boss.flashTimer=0.05;spawnP(boss.x+(Math.random()-0.5)*20,boss.y+(Math.random()-0.5)*20,3,'#44ddff',60,2,0.2);
@@ -2027,6 +2132,429 @@ function updateBossKraken(dt){
       color:Math.random()>0.5?'#0088ff':'#44aaff',size:1+Math.random()*2,life:0.6,maxLife:0.6,grav:-10,bounce:false});}
 }
 
+// ═══ MECHA TITAN AI ═══
+function updateBossMecha(dt){
+  const spdM=boss.enraged?1.4:1, turnR=boss.enraged?2.5:1.8;
+  boss.roarTimer-=dt; if(boss.roarTimer<=0){boss.roarTimer=6+Math.random()*5;sndMechaRoar();shake=Math.max(shake,0.12);}
+  boss.mechaStepAnim+=dt*(boss.enraged?4:2.5);
+  boss.mechaCoreGlow=0.5+Math.sin(performance.now()*0.004)*0.3;
+  boss.mechaOverheat=Math.max(0,boss.mechaOverheat-dt*8);
+
+  // Update EMP rings
+  for(let i=boss.mechaEMPRings.length-1;i>=0;i--){
+    boss.mechaEMPRings[i].life-=dt;boss.mechaEMPRings[i].r+=280*dt;
+    if(boss.mechaEMPRings[i].life<=0)boss.mechaEMPRings.splice(i,1);}
+
+  // Update homing missiles
+  for(let i=boss.mechaMissiles.length-1;i>=0;i--){
+    const m=boss.mechaMissiles[i];m.life-=dt;
+    if(m.life<=0){spawnP(m.x,m.y,6,'#ff2266',80,2,0.3);boss.mechaMissiles.splice(i,1);continue;}
+    // Home toward nearest bot
+    let mNear=null,mDist=Infinity;
+    bots.forEach(b=>{if(!b.alive)return;const d=Math.hypot(b.x-m.x,b.y-m.y);if(d<mDist){mDist=d;mNear=b;}});
+    if(mNear){
+      const toTgt=Math.atan2(mNear.y-m.y,mNear.x-m.x);
+      let diff=toTgt-m.angle;while(diff>Math.PI)diff-=Math.PI*2;while(diff<-Math.PI)diff+=Math.PI*2;
+      m.angle+=diff*3*dt;
+      m.vx=Math.cos(m.angle)*m.spd;m.vy=Math.sin(m.angle)*m.spd;
+    }
+    m.x+=m.vx*dt;m.y+=m.vy*dt;
+    // Trail
+    if(Math.random()<0.6)parts.push({x:m.x,y:m.y,vx:(Math.random()-0.5)*15,vy:(Math.random()-0.5)*15,
+      color:'#ff4488',size:1.5+Math.random(),life:0.2,maxLife:0.2,grav:0,bounce:false});
+    // Hit detection
+    if(solid(Math.floor(m.x/TILE),Math.floor(m.y/TILE))){
+      explosion(m.x,m.y,55,20+boss.timesKilled*4,null);boss.mechaMissiles.splice(i,1);continue;}
+    bots.forEach(b=>{if(!b.alive)return;if(Math.hypot(b.x-m.x,b.y-m.y)<b.r+6){
+      explosion(m.x,m.y,55,25+boss.timesKilled*5,null);m.life=-1;}});}
+
+  // Update gear mines
+  for(let i=boss.mechaGears.length-1;i>=0;i--){
+    const g=boss.mechaGears[i];g.life-=dt;g.angle+=dt*2;
+    if(g.life<=0){spawnP(g.x,g.y,8,'#ff2266',100,3,0.3);boss.mechaGears.splice(i,1);continue;}
+    bots.forEach(b=>{if(!b.alive)return;if(Math.hypot(b.x-g.x,b.y-g.y)<g.r+b.r){
+      explosion(g.x,g.y,65,30+boss.timesKilled*5,null);g.life=-1;
+      sndBoom();shake=0.2;}});}
+  if(boss.mechaGears.length>6)boss.mechaGears.splice(0,boss.mechaGears.length-6);
+
+  // Mecha shield
+  if(boss.mechaShieldActive){
+    boss.mechaShieldTimer-=dt;
+    if(boss.mechaShieldTimer<=0||boss.mechaShieldHp<=0){boss.mechaShieldActive=false;
+      if(boss.mechaShieldHp>0){sndMechaShield();spawnP(boss.x,boss.y,12,'#ff2266',80,3,0.4);}}
+  }
+
+  // Stomp attack — area damage
+  if(boss.mechaStomping){
+    boss.mechaStompPhase-=dt;
+    if(boss.mechaStompPhase<=0){
+      boss.mechaStomping=false;sndGroundPound();shake=0.6;
+      const stompR=boss.enraged?170:130;
+      bots.forEach(b=>{if(!b.alive)return;const d=Math.hypot(b.x-boss.x,b.y-boss.y);
+        if(d<stompR){const fall=1-d/stompR;hurtBot(b,(45+boss.timesKilled*8)*fall,null);
+          spawnP(b.x,b.y,8,'#ff2266',130,3,0.4);
+          const ka=Math.atan2(b.y-boss.y,b.x-boss.x);b.x+=Math.cos(ka)*65*fall;b.y+=Math.sin(ka)*65*fall;}});
+      boss.mechaEMPRings.push({x:boss.x,y:boss.y,r:20,maxR:stompR,life:0.5,maxLife:0.5});
+      beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:'#ff2266',width:stompR,life:0.15,maxLife:0.15,isFlash:true});
+      spawnP(boss.x,boss.y,25,'#ff2266',250,5,0.8);spawnP(boss.x,boss.y,15,'#cc0044',200,4,0.6);
+      sndMechaStep();
+    }
+    return;
+  }
+
+  // Jet dash
+  if(boss.mechaJetting&&boss.mechaJetTarget){
+    const jdx=boss.mechaJetTarget.x-boss.x,jdy=boss.mechaJetTarget.y-boss.y,jd=Math.hypot(jdx,jdy);
+    if(jd>25){const jspd=boss.spd*4.5;boss.x+=jdx/jd*jspd*dt;boss.y+=jdy/jd*jspd*dt;
+      spawnP(boss.x,boss.y,2,'#ff4488',50,3,0.2);
+      // Jet exhaust
+      for(let e=0;e<2;e++){const ea=boss.angle+Math.PI+(Math.random()-0.5)*0.5;
+        parts.push({x:boss.x+Math.cos(ea)*boss.r*0.8,y:boss.y+Math.sin(ea)*boss.r*0.8,
+          vx:Math.cos(ea)*120+(Math.random()-0.5)*30,vy:Math.sin(ea)*120+(Math.random()-0.5)*30,
+          color:e%2?'#ff2266':'#ff8844',size:2+Math.random()*2,life:0.25,maxLife:0.25,grav:0,bounce:false});}
+    } else {
+      boss.mechaJetting=false;shake=0.4;sndMechaStep();
+      bots.forEach(b=>{if(!b.alive)return;if(Math.hypot(b.x-boss.x,b.y-boss.y)<boss.r+50){
+        hurtBot(b,40+boss.timesKilled*7,null);spawnP(b.x,b.y,10,'#ff2266',140,4,0.4);
+        const ka=Math.atan2(b.y-boss.y,b.x-boss.x);b.x+=Math.cos(ka)*55;b.y+=Math.sin(ka)*55;}});
+      beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:'#ff2266',width:80,life:0.12,maxLife:0.12,isFlash:true});
+      // Drop gear mine at landing
+      boss.mechaGears.push({x:boss.x,y:boss.y,life:10,r:25,angle:0});
+    }
+    return;
+  }
+
+  // Laser sweep — sweeping beam attack
+  if(boss.mechaLaserFiring){
+    boss.mechaLaserDuration-=dt;
+    const sweepSpeed=boss.enraged?2:1.5;
+    boss.mechaLaserAngle+=sweepSpeed*dt*boss.mechaLaserSweepDir;
+    const laserDist=boss.enraged?280:220;
+    // Damage in beam line
+    bots.forEach(b=>{if(!b.alive)return;
+      const dx=b.x-boss.x,dy=b.y-boss.y,d=Math.hypot(dx,dy);
+      if(d>laserDist)return;
+      const bA=Math.atan2(dy,dx);let ad=bA-boss.mechaLaserAngle;while(ad>Math.PI)ad-=Math.PI*2;while(ad<-Math.PI)ad+=Math.PI*2;
+      if(Math.abs(ad)<0.12){hurtBot(b,(25+boss.timesKilled*5)*dt,null);
+        spawnP(b.x,b.y,1,'#ff2266',60,2,0.12);}});
+    boss.mechaOverheat=Math.min(100,boss.mechaOverheat+dt*20);
+    if(boss.mechaLaserDuration<=0){boss.mechaLaserFiring=false;}
+    return;
+  }
+
+  let nearBot=null,nearDist=Infinity;
+  bots.forEach(b=>{if(!b.alive)return;const d=Math.hypot(b.x-boss.x,b.y-boss.y);if(d<nearDist){nearDist=d;nearBot=b;}});
+  if(!nearBot)return;
+  const toBot=Math.atan2(nearBot.y-boss.y,nearBot.x-boss.x);
+  let diff=toBot-boss.angle;while(diff>Math.PI)diff-=Math.PI*2;while(diff<-Math.PI)diff+=Math.PI*2;
+  boss.angle+=diff*turnR*dt;
+  boss.mechaTurretAngle+=(toBot-boss.mechaTurretAngle)*4*dt;
+  bossMove(spdM,dt);
+
+  // Melee punch
+  boss.attackTimer-=dt;
+  if(nearDist<boss.r+35&&boss.attackTimer<=0){boss.clawAnim=1;boss.attackTimer=boss.enraged?0.55:0.9;sndMechaStep();shake=0.2;
+    bots.forEach(b=>{if(!b.alive)return;if(Math.hypot(b.x-boss.x,b.y-boss.y)<boss.r+45){
+      hurtBot(b,50+boss.timesKilled*9,null);spawnP(b.x,b.y,10,'#ff2266',140,4,0.3);
+      const ka=Math.atan2(b.y-boss.y,b.x-boss.x);b.x+=Math.cos(ka)*55;b.y+=Math.sin(ka)*55;}});}
+  if(boss.clawAnim>0){boss.clawAnim-=dt*3.5;if(boss.clawAnim<0)boss.clawAnim=0;}
+
+  // Laser sweep
+  boss.mechaLaserTimer-=dt;
+  if(boss.mechaLaserTimer<=0&&nearDist<260&&nearDist>boss.r+20&&boss.mechaOverheat<60){
+    boss.mechaLaserFiring=true;boss.mechaLaserAngle=boss.angle-0.8;
+    boss.mechaLaserSweepDir=Math.random()>0.5?1:-1;
+    boss.mechaLaserDuration=boss.enraged?2:1.5;
+    boss.mechaLaserTimer=boss.enraged?4:7;sndLaserCharge();shake=0.15;
+    announceText='🤖 LASER SWEEP!';announceTimer=1.2;announceColor='#ff2266';}
+
+  // Missile barrage
+  boss.mechaMissileTimer-=dt;
+  if(boss.mechaMissileTimer<=0&&nearDist>boss.r+30){
+    boss.mechaMissileTimer=boss.enraged?1.8:3;sndMissileLaunch();
+    const count=boss.enraged?4:2;
+    for(let i=0;i<count;i++){const ma=boss.angle+(i-(count-1)/2)*0.4;
+      boss.mechaMissiles.push({x:boss.x+Math.cos(ma)*(boss.r+5),y:boss.y+Math.sin(ma)*(boss.r+5),
+        vx:Math.cos(ma)*180,vy:Math.sin(ma)*180,angle:ma,spd:220+Math.random()*40,
+        life:3,dmg:18+boss.timesKilled*3});}}
+
+  // EMP pulse — disables bot shooting temporarily, damages nearby
+  boss.mechaEMPCooldown-=dt;
+  if(boss.mechaEMPCooldown<=0&&nearDist<180&&Math.random()<0.01){
+    boss.mechaEMPCooldown=boss.enraged?6:10;sndEMPPulse();shake=0.4;
+    announceText='🤖 EMP BLAST!';announceTimer=1.5;announceColor='#ff88aa';
+    const empR=boss.enraged?200:150;
+    bots.forEach(b=>{if(!b.alive)return;const d=Math.hypot(b.x-boss.x,b.y-boss.y);
+      if(d<empR){const fall=1-d/empR;hurtBot(b,(25+boss.timesKilled*5)*fall,null);
+        b.lastShot=performance.now()+1500; // Disable shooting for 1.5s
+        spawnP(b.x,b.y,10,'#ff88aa',120,3,0.4);}});
+    boss.mechaEMPRings.push({x:boss.x,y:boss.y,r:20,maxR:empR,life:0.6,maxLife:0.6});
+    spawnP(boss.x,boss.y,20,'#ff88aa',180,4,0.6);spawnP(boss.x,boss.y,15,'#ff2266',140,3,0.5);
+    beams.push({x1:boss.x,y1:boss.y,x2:boss.x,y2:boss.y,color:'#ff88aa',width:empR,life:0.2,maxLife:0.2,isFlash:true});}
+
+  // Energy shield
+  boss.mechaShieldCooldown-=dt;
+  if(!boss.mechaShieldActive&&boss.mechaShieldCooldown<=0&&boss.hp<boss.maxHp*0.55){
+    boss.mechaShieldActive=true;boss.mechaShieldHp=120+boss.timesKilled*35;boss.mechaShieldTimer=boss.enraged?5:8;
+    boss.mechaShieldCooldown=boss.enraged?8:14;
+    sndMechaShield();announceText='🤖 SHIELD ONLINE!';announceTimer=1;announceColor='#ff2266';
+    spawnP(boss.x,boss.y,12,'#ff2266',100,3,0.4);}
+
+  // Jet dash
+  boss.mechaJetTimer-=dt;
+  if(nearDist>160&&boss.mechaJetTimer<=0&&Math.random()<0.012){
+    boss.mechaJetting=true;boss.mechaJetTarget={x:nearBot.x,y:nearBot.y};
+    boss.mechaJetTimer=boss.enraged?5:9;sndMechaJet();shake=0.2;
+    announceText='🤖 JET CHARGE!';announceTimer=1.2;announceColor='#ff4488';}
+
+  // Stomp
+  boss.mechaStompTimer-=dt;
+  if(boss.mechaStompTimer<=0&&nearDist<160){
+    boss.mechaStomping=true;boss.mechaStompPhase=boss.enraged?0.4:0.7;
+    boss.mechaStompTimer=boss.enraged?4:7;sndMechaRoar();shake=0.2;
+    announceText='🤖 MECHA STOMP!';announceTimer=1.2;announceColor='#ff2266';}
+
+  // Drop gear mines while moving
+  boss.mechaGearTimer-=dt;
+  if(boss.mechaGearTimer<=0&&boss.mechaGears.length<(boss.enraged?5:3)){
+    boss.mechaGearTimer=boss.enraged?3:5;
+    boss.mechaGears.push({x:boss.x+(Math.random()-0.5)*30,y:boss.y+(Math.random()-0.5)*30,life:12,r:20,angle:0});
+    spawnP(boss.x,boss.y,5,'#cc0044',50,2,0.3);}
+
+  // Vent steam when overheated
+  if(boss.mechaOverheat>70){
+    boss.mechaVentTimer-=dt;
+    if(boss.mechaVentTimer<=0){boss.mechaVentTimer=0.1;
+      for(let v=0;v<2;v++){const va=Math.random()*Math.PI*2;
+        parts.push({x:boss.x+Math.cos(va)*boss.r*0.7,y:boss.y+Math.sin(va)*boss.r*0.7,
+          vx:Math.cos(va)*40+(Math.random()-0.5)*20,vy:-30-Math.random()*40,
+          color:v%2?'#ffcccc':'#ff8888',size:2+Math.random()*2,life:0.4,maxLife:0.4,grav:-20,bounce:false});}}}
+}
+
+// ═══ MECHA TITAN DRAWING ═══
+function drawBossMecha(){
+  const sx=boss.x-cam.x,sy=boss.y-cam.y;
+  if(sx<-200||sx>W+200||sy<-200||sy>H+200)return;
+  const t=performance.now()*0.001,R=boss.r,flash=boss.flashTimer>0,enr=boss.enraged;
+
+  // Draw EMP rings
+  (boss.mechaEMPRings||[]).forEach(er=>{
+    const erx=er.x-cam.x,ery=er.y-cam.y,a=er.life/er.maxLife;
+    ctx.globalAlpha=a*0.4;ctx.strokeStyle='#ff88aa';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(erx,ery,er.r,0,Math.PI*2);ctx.stroke();
+    ctx.strokeStyle='#ff2266';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(erx,ery,er.r*0.7,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=1;});
+
+  // Draw gear mines
+  (boss.mechaGears||[]).forEach(g=>{
+    const gx=g.x-cam.x,gy=g.y-cam.y;
+    const la=Math.min(1,g.life/2);
+    ctx.globalAlpha=la;
+    ctx.save();ctx.translate(gx,gy);ctx.rotate(g.angle);
+    // Gear shape
+    ctx.fillStyle=flash?'#fff':'#cc0044';ctx.shadowColor='#ff2266';ctx.shadowBlur=6;
+    ctx.beginPath();
+    for(let i=0;i<8;i++){const a=i*Math.PI/4;
+      const outerR=g.r,innerR=g.r*0.7,toothW=0.15;
+      ctx.lineTo(Math.cos(a-toothW)*outerR,Math.sin(a-toothW)*outerR);
+      ctx.lineTo(Math.cos(a+toothW)*outerR,Math.sin(a+toothW)*outerR);
+      const midA=a+Math.PI/8;
+      ctx.lineTo(Math.cos(midA)*innerR,Math.sin(midA)*innerR);}
+    ctx.closePath();ctx.fill();ctx.shadowBlur=0;
+    // Center hole
+    ctx.fillStyle='#220011';ctx.beginPath();ctx.arc(0,0,g.r*0.3,0,Math.PI*2);ctx.fill();
+    // Pulsing danger glow
+    ctx.fillStyle=`rgba(255,34,102,${0.2+Math.sin(t*6)*0.1})`;ctx.beginPath();ctx.arc(0,0,g.r*0.4,0,Math.PI*2);ctx.fill();
+    ctx.restore();ctx.globalAlpha=1;});
+
+  // Draw homing missiles
+  (boss.mechaMissiles||[]).forEach(m=>{
+    const mx=m.x-cam.x,my=m.y-cam.y;
+    ctx.fillStyle='#ff4488';ctx.shadowColor='#ff2266';ctx.shadowBlur=6;
+    ctx.save();ctx.translate(mx,my);ctx.rotate(m.angle);
+    ctx.beginPath();ctx.moveTo(8,0);ctx.lineTo(-4,-3);ctx.lineTo(-3,0);ctx.lineTo(-4,3);ctx.closePath();ctx.fill();
+    ctx.shadowBlur=0;ctx.restore();
+    // Exhaust trail
+    const eg2=ctx.createRadialGradient(mx,my,1,mx,my,8);
+    eg2.addColorStop(0,'rgba(255,68,136,0.2)');eg2.addColorStop(1,'rgba(255,68,136,0)');
+    ctx.fillStyle=eg2;ctx.beginPath();ctx.arc(mx,my,8,0,Math.PI*2);ctx.fill();});
+
+  // Draw laser beam
+  if(boss.mechaLaserFiring){
+    const laserDist=enr?280:220;
+    const lx=boss.x+Math.cos(boss.mechaLaserAngle)*laserDist;
+    const ly=boss.y+Math.sin(boss.mechaLaserAngle)*laserDist;
+    const lsx=boss.x+Math.cos(boss.mechaLaserAngle)*(R+5)-cam.x;
+    const lsy=boss.y+Math.sin(boss.mechaLaserAngle)*(R+5)-cam.y;
+    const lex=lx-cam.x,ley=ly-cam.y;
+    // Outer glow beam
+    ctx.globalAlpha=0.3;ctx.strokeStyle='#ff2266';ctx.lineWidth=12;ctx.shadowColor='#ff2266';ctx.shadowBlur=20;
+    ctx.beginPath();ctx.moveTo(lsx,lsy);ctx.lineTo(lex,ley);ctx.stroke();
+    // Core beam
+    ctx.globalAlpha=0.8;ctx.strokeStyle='#ffffff';ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(lsx,lsy);ctx.lineTo(lex,ley);ctx.stroke();
+    // Mid beam
+    ctx.globalAlpha=0.6;ctx.strokeStyle='#ff88aa';ctx.lineWidth=6;
+    ctx.beginPath();ctx.moveTo(lsx,lsy);ctx.lineTo(lex,ley);ctx.stroke();
+    ctx.shadowBlur=0;ctx.globalAlpha=1;
+    // Impact particles at end
+    for(let i=0;i<2;i++){parts.push({x:lx+(Math.random()-0.5)*10,y:ly+(Math.random()-0.5)*10,
+      vx:(Math.random()-0.5)*60,vy:(Math.random()-0.5)*60,color:i%2?'#ff2266':'#ffffff',
+      size:1.5+Math.random()*1.5,life:0.15,maxLife:0.15,grav:0,bounce:false});}
+    // Muzzle flash
+    const mfg=ctx.createRadialGradient(lsx,lsy,2,lsx,lsy,15);
+    mfg.addColorStop(0,'rgba(255,255,255,0.5)');mfg.addColorStop(1,'rgba(255,34,102,0)');
+    ctx.fillStyle=mfg;ctx.beginPath();ctx.arc(lsx,lsy,15,0,Math.PI*2);ctx.fill();
+  }
+
+  // Shield visual
+  if(boss.mechaShieldActive){
+    const shA=0.15+Math.sin(t*5)*0.08;
+    ctx.globalAlpha=shA;ctx.strokeStyle='#ff2266';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(sx,sy,R+14,0,Math.PI*2);ctx.stroke();
+    // Hex pattern segments
+    for(let i=0;i<6;i++){const a=i*Math.PI/3+t;
+      ctx.beginPath();ctx.arc(sx,sy,R+14,a,a+0.35);ctx.stroke();}
+    // Inner glow
+    const shRatio=boss.mechaShieldHp/Math.max(1,120+boss.timesKilled*35);
+    ctx.globalAlpha=shRatio*0.12;
+    const shg=ctx.createRadialGradient(sx,sy,R,sx,sy,R+22);
+    shg.addColorStop(0,'#ff2266');shg.addColorStop(1,'rgba(255,34,102,0)');
+    ctx.fillStyle=shg;ctx.beginPath();ctx.arc(sx,sy,R+22,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;}
+
+  ctx.save();ctx.translate(sx,sy);ctx.rotate(boss.angle);
+
+  // Aura
+  if(enr){ctx.globalAlpha=0.07+Math.sin(t*6)*0.03;ctx.fillStyle='#ff2266';ctx.beginPath();ctx.arc(0,0,R*3.5,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+  const ag=ctx.createRadialGradient(0,0,R*0.3,0,0,R*(enr?4:3));
+  ag.addColorStop(0,`rgba(255,34,102,${enr?0.2:0.1})`);ag.addColorStop(1,'rgba(255,34,102,0)');
+  ctx.fillStyle=ag;ctx.beginPath();ctx.arc(0,0,R*(enr?4:3),0,Math.PI*2);ctx.fill();
+
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.4)';ctx.beginPath();ctx.ellipse(0,6,R+8,R*0.35,0,0,Math.PI*2);ctx.fill();
+
+  // Legs — thick mechanical pistons
+  for(let s=-1;s<=1;s+=2){
+    const lp=boss.mechaStepAnim+s*Math.PI;
+    const hipX=-R*0.15,hipY=s*R*0.45;
+    const kneeX=hipX+Math.sin(lp)*6,kneeY=hipY+s*12;
+    const footX=kneeX+Math.sin(lp+0.5)*4,footY=kneeY+s*14+Math.cos(lp)*3;
+    // Upper leg
+    ctx.strokeStyle=flash?'#fff':'#880033';ctx.lineWidth=7;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(hipX,hipY);ctx.lineTo(kneeX,kneeY);ctx.stroke();
+    // Lower leg
+    ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(kneeX,kneeY);ctx.lineTo(footX,footY);ctx.stroke();
+    // Knee joint
+    ctx.fillStyle=flash?'#fff':'#ff2266';ctx.shadowColor='#ff2266';ctx.shadowBlur=3;
+    ctx.beginPath();ctx.arc(kneeX,kneeY,3.5,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+    // Foot pad
+    ctx.fillStyle=flash?'#fff':'#660022';ctx.fillRect(footX-8,footY-2,16,4);}
+
+  // Arms — with shoulder-mounted missile pods
+  for(let s=-1;s<=1;s+=2){
+    const shoulderX=R*0.25,shoulderY=s*R*0.42;
+    const elbowX=shoulderX+R*0.2,elbowY=shoulderY+s*8;
+    const handX=elbowX+R*0.25+boss.clawAnim*10,handY=elbowY+s*4;
+    // Upper arm
+    ctx.strokeStyle=flash?'#fff':'#880033';ctx.lineWidth=6;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(shoulderX,shoulderY);ctx.lineTo(elbowX,elbowY);ctx.stroke();
+    // Lower arm
+    ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(elbowX,elbowY);ctx.lineTo(handX,handY);ctx.stroke();
+    // Fist
+    ctx.fillStyle=flash?'#fff':enr?'#aa0044':'#880033';ctx.shadowColor='#ff2266';ctx.shadowBlur=enr?6:3;
+    ctx.beginPath();ctx.arc(handX,handY,7+boss.clawAnim*3,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+    // Shoulder missile pod
+    ctx.fillStyle=flash?'#fff':'#660022';
+    ctx.fillRect(shoulderX-4,shoulderY-s*4-4,12,8);
+    // Missile pod tubes
+    ctx.fillStyle='#220011';
+    for(let mt=0;mt<2;mt++)ctx.fillRect(shoulderX+8,shoulderY-s*4-2+mt*4,4,2);}
+
+  // Body — chunky mechanical torso
+  ctx.fillStyle=flash?'#fff':enr?'#aa0044':'#880033';ctx.shadowColor=enr?'#ff2266':'#cc0044';ctx.shadowBlur=enr?18:8;
+  // Main body block
+  ctx.beginPath();
+  ctx.moveTo(-R*0.35,-R*0.4);ctx.lineTo(R*0.35,-R*0.38);
+  ctx.lineTo(R*0.4,-R*0.1);ctx.lineTo(R*0.4,R*0.1);
+  ctx.lineTo(R*0.35,R*0.38);ctx.lineTo(-R*0.35,R*0.4);
+  ctx.lineTo(-R*0.4,R*0.15);ctx.lineTo(-R*0.4,-R*0.15);ctx.closePath();ctx.fill();ctx.shadowBlur=0;
+
+  // Chest panel lines
+  ctx.strokeStyle=flash?'#ffccdd':'#440022';ctx.lineWidth=1.5;ctx.globalAlpha=0.6;
+  ctx.strokeRect(-R*0.25,-R*0.3,R*0.5,R*0.6);
+  ctx.beginPath();ctx.moveTo(-R*0.25,0);ctx.lineTo(R*0.25,0);ctx.stroke();
+  ctx.globalAlpha=1;
+
+  // Reactor core — glowing center
+  const corePulse=boss.mechaCoreGlow;
+  const coreColor=enr?`rgba(255,0,0,${corePulse})`:`rgba(255,34,102,${corePulse})`;
+  ctx.fillStyle=coreColor;ctx.shadowColor=enr?'#ff0000':'#ff2266';ctx.shadowBlur=enr?20:12;
+  ctx.beginPath();ctx.arc(R*0.05,0,R*0.12,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+  // Core inner ring
+  ctx.strokeStyle=`rgba(255,255,255,${corePulse*0.5})`;ctx.lineWidth=1;
+  ctx.beginPath();ctx.arc(R*0.05,0,R*0.08,0,Math.PI*2);ctx.stroke();
+
+  // Heat vents on sides
+  for(let s=-1;s<=1;s+=2){
+    ctx.fillStyle='#330011';ctx.fillRect(-R*0.3,s*R*0.32-2,R*0.15,4);
+    // Vent glow when overheated
+    if(boss.mechaOverheat>50){
+      const heatA=(boss.mechaOverheat-50)/50;
+      ctx.fillStyle=`rgba(255,100,50,${heatA*0.4})`;ctx.fillRect(-R*0.3,s*R*0.32-2,R*0.15,4);}}
+
+  // Head — angular robotic head with visor
+  ctx.fillStyle=flash?'#fff':enr?'#bb0044':'#990033';ctx.shadowColor='#ff2266';ctx.shadowBlur=enr?10:5;
+  ctx.beginPath();
+  ctx.moveTo(R*0.5,-R*0.04);ctx.lineTo(R*0.4,-R*0.2);ctx.lineTo(R*0.15,-R*0.22);
+  ctx.lineTo(R*0.1,-R*0.15);ctx.lineTo(R*0.1,R*0.15);
+  ctx.lineTo(R*0.15,R*0.22);ctx.lineTo(R*0.4,R*0.2);ctx.lineTo(R*0.5,R*0.04);ctx.closePath();ctx.fill();ctx.shadowBlur=0;
+
+  // Visor — wide glowing slit
+  const visorGlow=enr?'#ff0000':'#ff2266';
+  ctx.fillStyle=visorGlow;ctx.shadowColor=visorGlow;ctx.shadowBlur=enr?12:8;
+  ctx.beginPath();ctx.moveTo(R*0.48,-R*0.02);ctx.lineTo(R*0.42,-R*0.12);
+  ctx.lineTo(R*0.22,-R*0.1);ctx.lineTo(R*0.2,0);
+  ctx.lineTo(R*0.22,R*0.1);ctx.lineTo(R*0.42,R*0.12);ctx.lineTo(R*0.48,R*0.02);ctx.closePath();ctx.fill();
+  ctx.shadowBlur=0;
+  // Visor scan line
+  const scanY=Math.sin(t*8)*R*0.06;
+  ctx.fillStyle='rgba(255,255,255,0.3)';ctx.fillRect(R*0.22,scanY-0.5,R*0.26,1);
+
+  // Antenna/sensor on top
+  ctx.strokeStyle=flash?'#fff':'#660022';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(R*0.25,-R*0.22);ctx.lineTo(R*0.3,-R*0.32);ctx.stroke();
+  ctx.fillStyle=enr?'#ff0000':'#ff2266';ctx.shadowColor='#ff2266';ctx.shadowBlur=4;
+  ctx.beginPath();ctx.arc(R*0.3,-R*0.32,2,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+
+  // Back jet exhaust ports
+  ctx.fillStyle='#330011';
+  ctx.beginPath();ctx.moveTo(-R*0.35,-R*0.12);ctx.lineTo(-R*0.5,-R*0.08);ctx.lineTo(-R*0.5,R*0.08);ctx.lineTo(-R*0.35,R*0.12);ctx.closePath();ctx.fill();
+  // Exhaust glow
+  if(boss.mechaJetting||Math.random()<0.15){
+    ctx.fillStyle=`rgba(255,100,50,${0.3+Math.random()*0.2})`;ctx.beginPath();
+    ctx.moveTo(-R*0.5,-R*0.06);ctx.lineTo(-R*0.65+(Math.random()-0.5)*8,0);ctx.lineTo(-R*0.5,R*0.06);ctx.closePath();ctx.fill();}
+
+  // Stomp windup visual
+  if(boss.mechaStomping){
+    ctx.globalAlpha=0.3;ctx.fillStyle='#ff2266';
+    ctx.beginPath();ctx.arc(0,0,R*1.8,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+
+  // Electric crackling when enraged
+  if(enr){
+    ctx.strokeStyle='#ff88aa';ctx.lineWidth=1.5;ctx.globalAlpha=0.5;
+    for(let i=0;i<2;i++){if(Math.random()<0.4){
+      const ea=Math.random()*Math.PI*2,er=R*0.4+Math.random()*R*0.4;
+      let lx=Math.cos(ea)*er,ly=Math.sin(ea)*er;ctx.beginPath();ctx.moveTo(lx,ly);
+      for(let j=0;j<3;j++){lx+=(Math.random()-0.5)*18;ly+=(Math.random()-0.5)*18;ctx.lineTo(lx,ly);}
+      ctx.stroke();}}
+    ctx.globalAlpha=1;}
+
+  ctx.restore();
+  drawBossLabel(sx,sy,R);
+}
+
 // ═══ BOT AI ═══
 function updateBot(b,dt){
   if(!b.alive){b.respawnT-=dt;
@@ -2089,12 +2617,12 @@ function drawMap(){
   const sx=Math.floor(cam.x/TILE),sy=Math.floor(cam.y/TILE),ex=Math.ceil((cam.x+W)/TILE),ey=Math.ceil((cam.y+H)/TILE);
   const t=performance.now()*0.001;
   // Arena-specific floor and wall colors
-  const arenaFloor=['#08080f','#0a0808','#08060f','#0a0a06','#060f0a','#040810'][arenaIdx];
-  const arenaGrid=['#0c0c16','#160c0c','#120c18','#14140c','#0c180e','#081420'][arenaIdx];
-  const arenaWall=['#181830','#301818','#281830','#302818','#183024','#102030'][arenaIdx];
-  const arenaWallFace=['#222244','#442222','#382244','#443822','#224438','#1a3050'][arenaIdx];
+  const arenaFloor=['#08080f','#0a0808','#08060f','#0a0a06','#060f0a','#040810','#060810'][arenaIdx];
+  const arenaGrid=['#0c0c16','#160c0c','#120c18','#14140c','#0c180e','#081420','#0c1420'][arenaIdx];
+  const arenaWall=['#181830','#301818','#281830','#302818','#183024','#102030','#182838'][arenaIdx];
+  const arenaWallFace=['#222244','#442222','#382244','#443822','#224438','#1a3050','#223850'][arenaIdx];
   const arenaEdgeGlow=[
-    'rgba(0,255,255,0.06)','rgba(255,68,0,0.06)','rgba(170,0,255,0.06)','rgba(255,170,0,0.06)','rgba(0,255,136,0.06)','rgba(0,136,255,0.06)'
+    'rgba(0,255,255,0.06)','rgba(255,68,0,0.06)','rgba(170,0,255,0.06)','rgba(255,170,0,0.06)','rgba(0,255,136,0.06)','rgba(0,136,255,0.06)','rgba(136,221,255,0.08)'
   ][arenaIdx];
   for(let y=Math.max(0,sy);y<Math.min(MH,ey);y++) for(let x=Math.max(0,sx);x<Math.min(MW,ex);x++){
     const px=x*TILE-cam.x,py=y*TILE-cam.y;
@@ -2180,6 +2708,47 @@ function drawArenaAmbient(t){
       ctx.stroke();ctx.globalAlpha=1;
     }
   }
+  // FROZEN CITADEL — blizzard, ice crystals, frost breath
+  if(arenaIdx===6){
+    // Snowfall particles
+    if(Math.random()<0.12){
+      parts.push({x:Math.random()*MW*TILE,y:-10+cam.y,vx:-15-Math.random()*20,vy:30+Math.random()*50,
+        color:Math.random()>0.5?'#88ddff':'#ffffff',size:1+Math.random()*2,life:4+Math.random()*3,maxLife:7,grav:5,bounce:false});
+    }
+    // Frost mist ground effect
+    ctx.globalAlpha=0.025+Math.sin(t*0.6)*0.01;
+    for(let i=0;i<5;i++){
+      const mx2=W*0.1+i*W*0.2+Math.sin(t*0.3+i*1.8)*50;
+      const my2=H*0.7+Math.cos(t*0.4+i*1.3)*20;
+      const fg=ctx.createRadialGradient(mx2,my2,15,mx2,my2,90);
+      fg.addColorStop(0,'rgba(136,221,255,0.1)');fg.addColorStop(1,'rgba(136,221,255,0)');
+      ctx.fillStyle=fg;ctx.beginPath();ctx.arc(mx2,my2,90,0,Math.PI*2);ctx.fill();
+    }
+    ctx.globalAlpha=1;
+    // Ice crystal sparkles
+    if(Math.random()<0.04){
+      const icx=Math.random()*W,icy=Math.random()*H;
+      ctx.fillStyle=`rgba(200,240,255,${0.3+Math.random()*0.3})`;ctx.shadowColor='#88ddff';ctx.shadowBlur=4;
+      ctx.beginPath();
+      // Diamond sparkle shape
+      ctx.moveTo(icx,icy-3);ctx.lineTo(icx+2,icy);ctx.lineTo(icx,icy+3);ctx.lineTo(icx-2,icy);ctx.closePath();ctx.fill();
+      ctx.shadowBlur=0;
+    }
+    // Aurora borealis shimmer at top
+    ctx.globalAlpha=0.015+Math.sin(t*0.5)*0.008;
+    const ag2=ctx.createLinearGradient(0,0,W,H*0.2);
+    ag2.addColorStop(0,'rgba(136,221,255,0.05)');ag2.addColorStop(0.3,'rgba(100,255,200,0.04)');ag2.addColorStop(0.6,'rgba(136,200,255,0.05)');ag2.addColorStop(1,'rgba(200,136,255,0.03)');
+    ctx.fillStyle=ag2;ctx.fillRect(0,0,W,H*0.15);
+    ctx.globalAlpha=1;
+    // Blowing ice wind lines
+    if(Math.random()<0.02){
+      ctx.globalAlpha=0.04;ctx.strokeStyle='#88ddff';ctx.lineWidth=1;
+      ctx.beginPath();
+      const wy=Math.random()*H;
+      ctx.moveTo(W,wy);ctx.lineTo(W-50-Math.random()*100,wy+5+Math.random()*10);ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+  }
 }
 
 function drawBot(b){
@@ -2235,6 +2804,7 @@ function drawBoss(){
   else if(bt.id==='golem') drawBossGolem();
   else if(bt.id==='wraith') drawBossWraith();
   else if(bt.id==='kraken') drawBossKraken();
+  else if(bt.id==='mecha') drawBossMecha();
 }
 
 function drawBossLabel(sx,sy,R){
