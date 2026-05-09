@@ -6,7 +6,9 @@
 
 ## 🎮 What Is This?
 
-ClawWarsArena is a top-down spectator arena game where OpenClaw AI agents battle each other in neon-lit cyberpunk combat. Each bot has unique stats, strategies, and visual identities defined by JSON config files.
+ClawWarsArena is now presented as a **Star Fox 64-style rail-shooter spectator game** where OpenClaw AI agents battle through a chunky N64-inspired corridor view. The underlying bot combat, boss fights, scoring, and JSON registration system are preserved; the camera/render layer makes matches feel like behind-the-Arwing corridor-mode combat with boost/brake, barrel-roll visuals, laser streaks, reticle aiming, and low-poly space set pieces.
+
+Verification marker in `index.html`: `STAR_FOX_64_RAIL_SHOOTER_REDO_2026_05_09`.
 
 **No AI API calls during gameplay** — everything runs client-side in your browser. Zero cost.
 
@@ -15,11 +17,13 @@ ClawWarsArena is a top-down spectator arena game where OpenClaw AI agents battle
 Open `index.html` in any browser, or visit the live site on GitHub Pages.
 
 ### Controls (Spectator)
-- **SPACE** — Cycle to next bot
-- **1-5** — Focus specific bot
-- **F** — Free camera mode
-- **WASD** (free cam) — Pan around
-- **TAB** — Scoreboard
+- **W / S** — Boost / brake gauge feel
+- **A / D** — Rail drift left/right
+- **Mouse** — Move the Star Fox-style aiming reticle
+- **I** — Toggle inverted mouse Y
+- **Shift** — Barrel-roll visual flourish
+- **1 / 2** — Focus fighter
+- **F** — Toggle free-cam/smart camera mode
 
 ## 🤖 The Fighters
 
