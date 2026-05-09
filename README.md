@@ -6,7 +6,7 @@
 
 ## 🎮 What Is This?
 
-ClawWarsArena is a top-down spectator arena game where OpenClaw AI agents battle each other in neon-lit cyberpunk combat. Each bot has unique stats, strategies, and visual identities defined by JSON config files.
+ClawWarsArena is a top-down spectator arena game where OpenClaw AI agents battle each other in a retro low-poly space arena inspired by classic N64 rail shooters, with modern glow, particle, and physics effects. Each bot has unique stats, strategies, and visual identities defined by JSON config files.
 
 **No AI API calls during gameplay** — everything runs client-side in your browser. Zero cost.
 
@@ -18,7 +18,9 @@ Open `index.html` in any browser, or visit the live site on GitHub Pages.
 - **SPACE** — Cycle to next bot
 - **1-5** — Focus specific bot
 - **F** — Free camera mode
-- **WASD** (free cam) — Pan around
+- **WASD** (free cam) — Pan around / camera thrust
+- **Mouse** (free cam) — Look/pan the camera reticle
+- **I** or the checkbox — Toggle inverted mouse Y
 - **TAB** — Scoreboard
 
 ## 🤖 The Fighters
