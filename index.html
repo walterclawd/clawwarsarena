@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>ClawWars Arena — Star Fox 64 Rail Shooter Bot Combat</title>
 <meta name="description" content="Watch AI agents battle each other in 1v1 neon arena combat. Submit your bot to compete. Free, open-source, no API calls.">
 <meta name="theme-color" content="#000000">
@@ -24,6 +24,7 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+html,body{width:100%;height:100%;overscroll-behavior:none;touch-action:none}
 body{background:#02030a;overflow:hidden;font-family:'Share Tech Mono',monospace;color:#b9f7ff;cursor:crosshair}
 canvas{display:block;position:fixed;top:0;left:0;image-rendering:auto}
 :root{--sf-blue:#4fd3ff;--sf-orange:#ff9a35;--sf-purple:#7b5cff;--sf-panel:rgba(5,12,28,.76)}
@@ -209,6 +210,32 @@ canvas{display:block;position:fixed;top:0;left:0;image-rendering:auto}
 #scanlines{opacity:.055!important;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(255,255,255,.12) 2px,rgba(255,255,255,.12) 3px)!important}
 #reticle{position:fixed;z-index:9;left:50%;top:50%;width:32px;height:32px;margin:-16px 0 0 -16px;pointer-events:none;opacity:.72;border:1px solid rgba(255,154,53,.65);box-shadow:0 0 18px rgba(255,154,53,.32);clip-path:polygon(45% 0,55% 0,55% 38%,100% 38%,100% 62%,55% 62%,55% 100%,45% 100%,45% 62%,0 62%,0 38%,45% 38%)}
 
+
+/* ═══ MOBILE TOUCH CONTROLS — MOBILE_TOUCH_CONTROLS_2026_05_09 ═══ */
+#mobile-landscape-gate{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;text-align:center;padding:max(24px,env(safe-area-inset-top)) max(24px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left));background:radial-gradient(circle at 50% 35%,rgba(28,55,120,.96),rgba(0,0,0,.98) 58%);color:#d9ecff;font-family:'Orbitron',sans-serif;letter-spacing:2px;touch-action:none}
+#mobile-landscape-gate .gate-card{max-width:430px;border:1px solid rgba(79,211,255,.45);background:rgba(3,8,22,.82);box-shadow:0 0 35px rgba(79,211,255,.22);padding:24px 22px}
+#mobile-landscape-gate .gate-icon{font-size:3.4rem;margin-bottom:10px;animation:gateTilt 1.8s ease-in-out infinite}
+#mobile-landscape-gate .gate-title{font-size:1rem;color:#ffcf8a;margin-bottom:10px}
+#mobile-landscape-gate .gate-copy{font-family:'Share Tech Mono',monospace;font-size:.72rem;line-height:1.55;color:#9fb6d9;letter-spacing:1px}
+@keyframes gateTilt{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}
+body.mobile-portrait #mobile-landscape-gate{display:flex}
+body.mobile-portrait canvas,body.mobile-portrait #hud,body.mobile-portrait #intro,body.mobile-portrait #reticle,body.mobile-portrait #mobile-controls{pointer-events:none;filter:blur(2px)}
+#mobile-controls{position:fixed;inset:0;z-index:30;display:none;pointer-events:none;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+body.mobile-device:not(.mobile-portrait) #mobile-controls{display:block}
+body.mobile-device #controls-hint{display:none!important}
+body.mobile-device #mouse-options{display:none!important}
+#touch-joystick{position:absolute;left:max(22px,env(safe-area-inset-left));bottom:max(20px,env(safe-area-inset-bottom));width:min(34vw,178px);height:min(34vw,178px);border-radius:50%;pointer-events:all;background:radial-gradient(circle,rgba(79,211,255,.10),rgba(79,211,255,.025) 58%,rgba(0,0,0,.18));border:1px solid rgba(79,211,255,.34);box-shadow:0 0 26px rgba(79,211,255,.12),inset 0 0 18px rgba(0,0,0,.38)}
+#touch-joystick:before{content:'virtual-joystick';position:absolute;left:50%;top:-18px;transform:translateX(-50%);font-size:.52rem;color:#7f94bb;letter-spacing:1px}
+#touch-stick{position:absolute;left:50%;top:50%;width:42%;height:42%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,#f7f2c8,#ff9a35 58%,#704319);border:2px solid rgba(255,255,255,.38);box-shadow:0 0 22px rgba(255,154,53,.46)}
+#touch-buttons{position:absolute;right:max(18px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(2,minmax(64px,74px));grid-template-rows:repeat(2,minmax(54px,64px));gap:10px;pointer-events:all}
+.touch-btn{border:1px solid rgba(255,207,138,.52);border-radius:16px;background:linear-gradient(145deg,rgba(255,154,53,.26),rgba(6,16,38,.86));color:#fff4cf;font-family:'Orbitron',sans-serif;font-size:.68rem;font-weight:900;letter-spacing:1px;text-shadow:0 0 9px rgba(255,154,53,.7);box-shadow:0 0 18px rgba(255,154,53,.16),inset 0 0 14px rgba(79,211,255,.08);touch-action:none}
+.touch-btn.active{transform:scale(.94);background:linear-gradient(145deg,rgba(79,211,255,.38),rgba(255,154,53,.42));box-shadow:0 0 28px rgba(79,211,255,.34),inset 0 0 15px rgba(255,255,255,.18)}
+#touch-help{position:absolute;left:50%;bottom:max(10px,env(safe-area-inset-bottom));transform:translateX(-50%);font-size:.56rem;color:#7f94bb;letter-spacing:1px;text-align:center;text-shadow:0 0 8px #000;pointer-events:none}
+body.mobile-device #hud-top{padding-left:max(8px,env(safe-area-inset-left));padding-right:max(8px,env(safe-area-inset-right))}
+body.mobile-device #reticle.touch-fire-pulse{animation:touchFirePulse .22s ease-out}
+@keyframes touchFirePulse{0%{transform:scale(1.55)}100%{transform:scale(1)}}
+@media (max-height:460px) and (orientation:landscape){.logo{font-size:2.1em}#intro .sub{margin-bottom:12px}.start-btn{margin-top:12px;padding:10px 30px}#leaderboard-section{display:none}.fighter-hud{min-width:150px}.fh-hp-track{width:96px}.fh-armor-track{width:96px}#boss-bar{top:43px;width:220px}#touch-joystick{width:132px;height:132px}#touch-buttons{grid-template-columns:repeat(2,62px);grid-template-rows:repeat(2,48px);gap:8px}.touch-btn{border-radius:13px;font-size:.56rem}#touch-help{display:none}}
+
 </style>
 </head>
 <body>
@@ -242,6 +269,24 @@ canvas{display:block;position:fixed;top:0;left:0;image-rendering:auto}
 <div id="scanlines"></div>
 <div id="reticle"></div>
 <label id="mouse-options"><input type="checkbox" id="mouseInvert"> INVERT MOUSE</label>
+
+<div id="mobile-landscape-gate" class="mobile-landscape-gate">
+  <div class="gate-card">
+    <div class="gate-icon">📱↔️</div>
+    <div class="gate-title">ROTATE PHONE TO LANDSCAPE</div>
+    <div class="gate-copy">ClawWars mobile flight controls are landscape-only so both thumbs fit: left stick to steer/aim, right buttons for fire, boost, brake, and barrel roll.</div>
+  </div>
+</div>
+<div id="mobile-controls" aria-label="ClawWars mobile touch controls">
+  <div id="touch-joystick" data-marker="virtual-joystick"><div id="touch-stick"></div></div>
+  <div id="touch-buttons" data-marker="touch-boost-brake">
+    <button class="touch-btn" data-touch="fire">FIRE</button>
+    <button class="touch-btn" data-touch="boost">BOOST</button>
+    <button class="touch-btn" data-touch="brake">BRAKE</button>
+    <button class="touch-btn" data-touch="roll">ROLL</button>
+  </div>
+  <div id="touch-help">LEFT STICK AIM/STEER · RIGHT THUMB FIRE/BOOST/BRAKE/ROLL</div>
+</div>
 
 <div id="hud" style="display:none">
   <div id="hud-top">
@@ -525,7 +570,11 @@ let mouse = { x: innerWidth / 2, y: innerHeight / 2, dx: 0, dy: 0, active: false
 let mouseInvert = localStorage.getItem('clawwarsMouseInvert') === 'true';
 const STAR_FOX_64_REDO_MARKER = 'STAR_FOX_64_RAIL_SHOOTER_REDO_2026_05_09';
 const SF64_FEATURE_MARKERS = ['behind-the-ship-camera','corridor-mode','arwing-silhouette','boost-brake-gauge','barrel-roll','n64-low-poly'];
+const MOBILE_TOUCH_CONTROLS_MARKER = 'MOBILE_TOUCH_CONTROLS_2026_05_09';
+const MOBILE_FEATURE_MARKERS = ['mobile-landscape-gate','virtual-joystick','touch-boost-brake'];
 let sfView = { yaw:0, pitch:0, roll:0, laneX:0, laneY:0, boost:0, brake:0, barrel:0, barrelDir:1, speed:1, crossX:0, crossY:0 };
+let mobileLandscapeBlocked = false;
+let mobileTouch = { active:false, joystickId:null, joyX:0, joyY:0, boost:false, brake:false, roll:false, fire:false, lastFire:0 };
 var stars = [];
 let lt = 0;
 let countdownTimer = 0, countdownPhase = ''; // 'countdown' or ''
@@ -2666,7 +2715,8 @@ function drawReticle(){
   sfView.crossX += (((mouse.x/Math.max(1,W))-0.5)*2*130 - sfView.crossX)*0.12;
   sfView.crossY += (((mouse.y/Math.max(1,H))-0.5)*2*(mouseInvert?-1:1)*82 - sfView.crossY)*0.12;
   const rx=W/2+sfView.crossX, ry=H*0.48+sfView.crossY;
-  r.style.transform=`translate(${rx-W/2}px, ${ry-H/2}px)`;
+  const fireScale=performance.now()-mobileTouch.lastFire<220?1.28:1;
+  r.style.transform=`translate(${rx-W/2}px, ${ry-H/2}px) scale(${fireScale})`;
   r.style.borderColor='rgba(255,205,92,.92)';
   r.style.boxShadow='0 0 18px rgba(255,154,53,.55), inset 0 0 10px rgba(79,211,255,.22)';
 }
@@ -4083,14 +4133,16 @@ function updateCamera(dt){
     let delta=((targetYaw-sfView.yaw+Math.PI*3)%(Math.PI*2))-Math.PI;
     sfView.yaw+=delta*0.07;
   }
-  const steer=(keys.ShiftLeft||keys.ShiftRight)?1.7:1;
-  sfView.boost += ((keys.KeyW?1:0)-sfView.boost)*0.08;
-  sfView.brake += ((keys.KeyS?1:0)-sfView.brake)*0.10;
+  const steer=(keys.ShiftLeft||keys.ShiftRight||mobileTouch.roll)?1.7:1;
+  sfView.boost += (((keys.KeyW||mobileTouch.boost)?1:0)-sfView.boost)*0.08;
+  sfView.brake += (((keys.KeyS||mobileTouch.brake)?1:0)-sfView.brake)*0.10;
   if(keys.KeyA)sfView.laneX-=360*dt*steer;if(keys.KeyD)sfView.laneX+=360*dt*steer;
+  if(Math.abs(mobileTouch.joyX)>0.06)sfView.laneX+=mobileTouch.joyX*440*dt*steer;
   if(keys.KeyQ||keys.ArrowUp)sfView.laneY-=260*dt;if(keys.KeyE||keys.ArrowDown)sfView.laneY+=260*dt;
+  if(Math.abs(mobileTouch.joyY)>0.06)sfView.laneY+=mobileTouch.joyY*320*dt;
   sfView.laneX+=(sfView.crossX*.28-sfView.laneX)*0.035;sfView.laneY+=(sfView.crossY*.38-sfView.laneY)*0.035;
   sfView.laneX=sfClamp(sfView.laneX,-260,260);sfView.laneY=sfClamp(sfView.laneY,-150,150);
-  if((keys.ShiftLeft||keys.ShiftRight)&&sfView.barrel<=0){sfView.barrel=.75;sfView.barrelDir=keys.KeyA?-1:1;}
+  if((keys.ShiftLeft||keys.ShiftRight||mobileTouch.roll)&&sfView.barrel<=0){sfView.barrel=.75;sfView.barrelDir=(keys.KeyA||mobileTouch.joyX<-.2)?-1:1;}
   if(sfView.barrel>0)sfView.barrel-=dt;
   const barrelRoll=sfView.barrel>0?sfView.barrelDir*(1-sfView.barrel/.75)*Math.PI*2:0;
   sfView.roll+=(sfClamp(sfView.laneX/260,-1,1)*-.38+barrelRoll-sfView.roll)*0.12;
@@ -4123,6 +4175,27 @@ function updateHUD(){
 const invertEl=document.getElementById('mouseInvert');
 invertEl.checked=mouseInvert;
 invertEl.addEventListener('change',()=>{mouseInvert=invertEl.checked;localStorage.setItem('clawwarsMouseInvert',String(mouseInvert));});
+function isPhoneLike(){
+  const coarse=matchMedia('(pointer: coarse)').matches||navigator.maxTouchPoints>0;
+  const ua=/Android|iPhone|iPod|Mobile/i.test(navigator.userAgent);
+  return (coarse&&Math.min(innerWidth,innerHeight)<820)||ua;
+}
+function syncMobileUX(){
+  const mobile=isPhoneLike();
+  mobileLandscapeBlocked=mobile&&innerHeight>innerWidth;
+  document.body.classList.toggle('mobile-device',mobile);
+  document.body.classList.toggle('mobile-portrait',mobileLandscapeBlocked);
+  if(mobileLandscapeBlocked){keys={};mobileTouch.boost=mobileTouch.brake=mobileTouch.roll=mobileTouch.fire=false;mobileTouch.joyX=mobileTouch.joyY=0;updateStick();}
+}
+function updateStick(){
+  const stick=document.getElementById('touch-stick');if(!stick)return;
+  stick.style.transform=`translate(calc(-50% + ${mobileTouch.joyX*42}px), calc(-50% + ${mobileTouch.joyY*42}px))`;
+  if(mobileTouch.active){mouse.x=W/2+mobileTouch.joyX*W*.34;mouse.y=H/2+mobileTouch.joyY*H*.38;mouse.active=true;}
+}
+function setTouchButton(btn,on){
+  const name=btn.dataset.touch;btn.classList.toggle('active',on);mobileTouch[name]=on;
+  if(name==='fire'&&on){mobileTouch.lastFire=performance.now();const r=document.getElementById('reticle');if(r){r.classList.remove('touch-fire-pulse');void r.offsetWidth;r.classList.add('touch-fire-pulse');}snd(1200,.05,'square',.045);}
+}
 addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;mouse.dx=e.movementX||0;mouse.dy=e.movementY||0;mouse.active=true;});
 addEventListener('keydown',e=>{keys[e.code]=true;
   if(e.code==='KeyF')freeCam=!freeCam;
@@ -4131,6 +4204,22 @@ addEventListener('keydown',e=>{keys[e.code]=true;
   if(e.code==='Digit2'){specIdx=1;freeCam=false;}
 });
 addEventListener('keyup',e=>{keys[e.code]=false;});
+const joy=document.getElementById('touch-joystick');
+if(joy){
+  const moveJoy=t=>{const r=joy.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,rad=r.width*.36;mobileTouch.joyX=sfClamp((t.clientX-cx)/rad,-1,1);mobileTouch.joyY=sfClamp((t.clientY-cy)/rad,-1,1);updateStick();};
+  joy.addEventListener('touchstart',e=>{e.preventDefault();const t=e.changedTouches[0];mobileTouch.joystickId=t.identifier;mobileTouch.active=true;moveJoy(t);},{passive:false});
+  joy.addEventListener('touchmove',e=>{e.preventDefault();for(const t of e.changedTouches){if(t.identifier===mobileTouch.joystickId)moveJoy(t);}},{passive:false});
+  const endJoy=e=>{for(const t of e.changedTouches){if(t.identifier===mobileTouch.joystickId){mobileTouch.active=false;mobileTouch.joystickId=null;mobileTouch.joyX=mobileTouch.joyY=0;mouse.x=W/2;mouse.y=H/2;updateStick();}}};
+  joy.addEventListener('touchend',endJoy,{passive:false});joy.addEventListener('touchcancel',endJoy,{passive:false});
+}
+document.querySelectorAll('.touch-btn').forEach(btn=>{
+  btn.addEventListener('pointerdown',e=>{e.preventDefault();btn.setPointerCapture?.(e.pointerId);setTouchButton(btn,true);});
+  ['pointerup','pointercancel','pointerleave'].forEach(type=>btn.addEventListener(type,e=>{e.preventDefault();setTouchButton(btn,false);}));
+});
+['touchmove','gesturestart','gesturechange'].forEach(type=>document.addEventListener(type,e=>{if(document.body.classList.contains('mobile-device'))e.preventDefault();},{passive:false}));
+addEventListener('resize',()=>{resize();syncMobileUX();});
+addEventListener('orientationchange',()=>setTimeout(syncMobileUX,80));
+syncMobileUX();
 
 // ═══ TOURNAMENT ═══
 function generateMatchups(configs){
@@ -4414,6 +4503,7 @@ function checkSpecialAnnouncements(){
 function loop(t){
   requestAnimationFrame(loop);
   let dt=Math.min((t-lt)/1000,0.05);lt=t;
+  if(mobileLandscapeBlocked)return;
   if(gamePhase!=='fight')return;
   // Slow-mo effect
   updateSlowMo(dt);
@@ -4510,6 +4600,7 @@ function demoLoop(t) {
   if (!demoMode) return;
   requestAnimationFrame(demoLoop);
   const dt = Math.min((t - lt) / 1000, 0.05); lt = t;
+  if(mobileLandscapeBlocked)return;
   gameTime += dt;
   bots.forEach(b => updateBot(b, dt)); updateBoss(dt); updateHazards(dt);
   // Simplified projectile/particle update (same as main loop)
