@@ -574,7 +574,10 @@ const MOBILE_TOUCH_CONTROLS_MARKER = 'MOBILE_TOUCH_CONTROLS_2026_05_09';
 const MOBILE_FEATURE_MARKERS = ['mobile-landscape-gate','virtual-joystick','touch-boost-brake'];
 const CLAW_WARS_VISUAL_RESCUE_MARKER = 'CLAW_WARS_VISUAL_RESCUE_2026_05_09';
 const VISUAL_RESCUE_FEATURE_MARKERS = ['high-visibility-lasers','mobile-readable-projectiles','premium-starfox-feel'];
-let sfView = { yaw:0, pitch:0, roll:0, laneX:0, laneY:0, boost:0, brake:0, barrel:0, barrelDir:1, speed:1, crossX:0, crossY:0 };
+const GAMEPLAY_ITERATION_MARKER = 'CLAW_WARS_GAMEPLAY_ITERATION_2026_05_10';
+const GAMEPLAY_FEATURE_MARKERS = ['reticle-driven-fire','rail-drone-waves','target-priority-lock','mobile-fire-loop','hit-confirm-feedback'];
+let sfView = { yaw:0, pitch:0, roll:0, laneX:0, laneY:0, boost:0, brake:0, barrel:0, barrelDir:1, speed:1, crossX:0, crossY:0, lastLock:null };
+let railDrones = [], railWaveTimer = 2.2, railWaveCount = 0, manualFireDown = false, lastManualFire = 0, hitConfirmTimer = 0;
 let mobileLandscapeBlocked = false;
 let mobileTouch = { active:false, joystickId:null, joyX:0, joyY:0, boost:false, brake:false, roll:false, fire:false, lastFire:0 };
 var stars = [];
@@ -627,6 +630,95 @@ function spawnImpactFx(x,y,color='#ffef86',big=false){
   spawnP(x,y,big?16:9,'#ffffff',big?230:170,big?3:2,.28);
   beams.push({x1:x,y1:y,x2:x,y2:y,color,width:big?92:62,life:big?.18:.13,maxLife:big?.18:.13,isFlash:true,impactRing:true});
   shake=Math.max(shake,big?.32:.18);tactilePulse(big?34:18);
+}
+
+function addHitConfirm(color='#ffee54',power=0.16){
+  hitConfirmTimer=Math.max(hitConfirmTimer,power);
+  const r=document.getElementById('reticle');
+  if(r){r.classList.remove('touch-fire-pulse');void r.offsetWidth;r.classList.add('touch-fire-pulse');}
+  tactilePulse(power>.2?26:14);
+}
+
+function worldPointFromReticle(forward=420){
+  const f=sfFocus(); if(!f)return null;
+  const yaw=sfView.yaw||f.angle||0;
+  const side=sfView.crossX*0.72+sfView.laneX*0.22;
+  return {x:f.x+Math.cos(yaw)*forward-Math.sin(yaw)*side,y:f.y+Math.sin(yaw)*forward+Math.cos(yaw)*side};
+}
+
+function reticleTarget(){
+  const candidates=[];
+  const add=(obj,type,weight=1)=>{if(!obj||obj.alive===false)return;const pr=sfProject(obj.x,obj.y,type==='boss'?120:70);if(!pr.visible)return;const dx=pr.x-(W/2+sfView.crossX),dy=pr.y-(H*.48+sfView.crossY);const score=Math.hypot(dx,dy)/(weight*Math.max(.55,pr.scale));candidates.push({obj,type,pr,score});};
+  railDrones.forEach(d=>add(d,'drone',1.8));
+  const f=sfFocus();bots.forEach(b=>{if(b!==f)add(b,'bot',1.25);});
+  if(boss&&boss.alive)add(boss,'boss',1.55);
+  candidates.sort((a,b)=>a.score-b.score);
+  const hit=candidates[0]&&candidates[0].score<115?candidates[0]:null;
+  sfView.lastLock=hit;return hit;
+}
+
+function aimBotAtReticle(bot){
+  const lock=reticleTarget();
+  const target=lock?lock.obj:worldPointFromReticle(480);
+  if(!bot||!target)return;
+  bot.angle=Math.atan2(target.y-bot.y,target.x-bot.x);
+}
+
+function manualFire(){
+  const now=performance.now(); if(now-lastManualFire<118)return;
+  const b=sfFocus(); if(!b||!b.alive)return;
+  lastManualFire=now; aimBotAtReticle(b); shoot(b);
+}
+
+
+// ═══ RAIL DRONE WAVES — Star Fox-style readable target fodder ═══
+function spawnRailWave(force=false){
+  if(gamePhase!=='fight'||countdownPhase==='countdown')return;
+  const f=sfFocus(); if(!f||(!force&&railDrones.length>5))return;
+  railWaveCount++;
+  const yaw=sfView.yaw||f.angle||0, count=3+Math.min(2,railWaveCount%4);
+  for(let i=0;i<count;i++){
+    const forward=520+i*58+Math.random()*80, side=(i-(count-1)/2)*105+(Math.random()-0.5)*45;
+    const x=f.x+Math.cos(yaw)*forward-Math.sin(yaw)*side;
+    const y=f.y+Math.sin(yaw)*forward+Math.cos(yaw)*side;
+    railDrones.push({x,y,r:13,hp:38+railWaveCount*3,maxHp:38+railWaveCount*3,angle:yaw+Math.PI,
+      color:i%2?'#ff5a6d':'#39e8ff',shootT:.65+Math.random()*1.1,life:13,phase:Math.random()*Math.PI*2,
+      vx:-Math.cos(yaw)*(18+Math.random()*14),vy:-Math.sin(yaw)*(18+Math.random()*14),alive:true});
+  }
+  announceText='ENEMY WAVE INBOUND';announceTimer=1.1;announceColor='#39e8ff';
+}
+function updateRailDrones(dt){
+  railWaveTimer-=dt;
+  if(railWaveTimer<=0){railWaveTimer=7.5+Math.random()*4.5;spawnRailWave();}
+  const f=sfFocus();
+  for(let i=railDrones.length-1;i>=0;i--){
+    const d=railDrones[i];d.life-=dt;if(d.life<=0||d.hp<=0){railDrones.splice(i,1);continue;}
+    const yaw=sfView.yaw||(f&&f.angle)||0;
+    d.phase+=dt*5;d.x+=d.vx*dt-Math.sin(yaw)*(Math.sin(d.phase)*18*dt);d.y+=d.vy*dt+Math.cos(yaw)*(Math.sin(d.phase)*18*dt);
+    d.angle=yaw+Math.PI+Math.sin(d.phase)*0.2;
+    d.shootT-=dt;
+    if(d.shootT<=0){d.shootT=1.2+Math.random()*1.4;
+      const tgt=f&&f.alive?f:bots.find(b=>b.alive); if(tgt){const a=Math.atan2(tgt.y-d.y,tgt.x-d.x)+(Math.random()-0.5)*0.12;
+        projs.push({x:d.x+Math.cos(a)*16,y:d.y+Math.sin(a)*16,vx:Math.cos(a)*330,vy:Math.sin(a)*330,dmg:10,size:4,color:d.color,life:1.7,owner:null,splash:0,isDroneBolt:true});
+        beams.push({x1:d.x,y1:d.y,x2:d.x+Math.cos(a)*34,y2:d.y+Math.sin(a)*34,color:d.color,width:16,life:.08,maxLife:.08,isFlash:true});}
+    }
+    if(f&&Math.hypot(f.x-d.x,f.y-d.y)<f.r+d.r){hurtBot(f,18,null);hurtRailDrone(d,999,f);}
+  }
+}
+function hurtRailDrone(d,dmg,attacker){
+  if(!d||d.hp<=0)return;d.hp-=dmg;hitConfirmTimer=.18;
+  spawnP(d.x,d.y,10,d.color,150,3,.28);beams.push({x1:d.x,y1:d.y,x2:d.x,y2:d.y,color:d.color,width:44,life:.1,maxLife:.1,isFlash:true,impactRing:true});
+  if(d.hp<=0){spawnImpactFx(d.x,d.y,d.color,true);sndBoom();shake=Math.max(shake,.25);addHitConfirm(d.color,.24);if(attacker){const idx=bots.indexOf(attacker);if(idx>=0){totalDmgDealt[idx]+=20;combos[idx]++;comboTimers[idx]=1.2;}}}
+  else {sndHit();addHitConfirm(d.color,.14);}
+}
+function drawRailDrone(d){
+  const p=sfProject(d.x,d.y,90); if(!p.visible||p.x<-120||p.x>W+120||p.y<-120||p.y>H+120)return;
+  const sc=sfClamp(p.scale*1.35,.34,1.35), r=18*sc;
+  ctx.save();ctx.translate(p.x,p.y);ctx.rotate((d.angle-(sfView.yaw||0))*.28);ctx.scale(sc,sc);ctx.globalCompositeOperation='lighter';ctx.shadowColor=d.color;ctx.shadowBlur=16;
+  sfPoly([[0,-18],[18,2],[7,10],[0,5],[-7,10],[-18,2]],d.color,'#ffffff',1.4);
+  ctx.fillStyle='#111827';ctx.fillRect(-7,-3,14,6);ctx.fillStyle='#fff';ctx.fillRect(-4,-1,8,2);
+  ctx.restore();
+  const hp=Math.max(0,d.hp/d.maxHp);ctx.fillStyle='rgba(0,0,0,.62)';ctx.fillRect(p.x-r,p.y-r-12,r*2,4);ctx.fillStyle=d.color;ctx.fillRect(p.x-r,p.y-r-12,r*2*hp,4);
 }
 
 // ═══ DAMAGE POPUPS ═══
@@ -844,6 +936,12 @@ function shoot(bot) {
       const px=bot.x+Math.cos(bot.angle)*dot,py=bot.y+Math.sin(bot.angle)*dot;
       if(Math.hypot(px-t.x,py-t.y)<t.r+6){hitBot=t;hitDist=dot;}
     });
+    railDrones.forEach(d=>{
+      const dx=d.x-bot.x,dy=d.y-bot.y,dot=dx*Math.cos(bot.angle)+dy*Math.sin(bot.angle);
+      if(dot<0||dot>hitDist)return;
+      const px=bot.x+Math.cos(bot.angle)*dot,py=bot.y+Math.sin(bot.angle)*dot;
+      if(Math.hypot(px-d.x,py-d.y)<d.r+10){hitBot=d;hitDist=dot;hitBoss=false;}
+    });
     if(boss&&boss.alive){
       const bdx=boss.x-bot.x,bdy=boss.y-bot.y,bdot=bdx*Math.cos(bot.angle)+bdy*Math.sin(bot.angle);
       if(bdot>0&&bdot<hitDist){const bpx=bot.x+Math.cos(bot.angle)*bdot,bpy=bot.y+Math.sin(bot.angle)*bdot;
@@ -852,8 +950,8 @@ function shoot(bot) {
     const endX=bot.x+Math.cos(bot.angle)*hitDist, endY=bot.y+Math.sin(bot.angle)*hitDist;
     beams.push({x1:bot.x+Math.cos(bot.angle)*14,y1:bot.y+Math.sin(bot.angle)*14,x2:endX,y2:endY,
       color:w.color,width:bot.wpn===3?2:3,life:bot.wpn===3?0.06:0.2,maxLife:bot.wpn===3?0.06:0.2});
-    if(hitBot){hurtBot(hitBot,w.dmg,bot);spawnP(hitBot.x,hitBot.y,6,'#ff0000',100,2,0.25);sndHit();}
-    else if(hitBoss){hurtBoss(w.dmg,bot);spawnP(boss.x,boss.y,6,'#ff4400',100,2,0.25);sndHit();}
+    if(hitBot){if(railDrones.includes(hitBot)){hurtRailDrone(hitBot,w.dmg,bot);}else{hurtBot(hitBot,w.dmg,bot);spawnImpactFx(hitBot.x,hitBot.y,w.color,false);sndHit();}}
+    else if(hitBoss){hurtBoss(w.dmg,bot);spawnImpactFx(boss.x,boss.y,'#ff8844',true);sndHit();}
     // Rescue-pass muzzle flash: large, readable, and tied to the bottom-screen Arwing perspective.
     const mx2=bot.x+Math.cos(bot.angle)*16,my2=bot.y+Math.sin(bot.angle)*16;
     spawnP(mx2,my2,8,w.color,150,3,0.16);
@@ -2666,6 +2764,7 @@ function updateBot(b,dt){
   bots.forEach(o=>{if(o===b||!o.alive)return;const d=Math.hypot(o.x-b.x,o.y-b.y);if(d<tgtDist){tgtDist=d;tgt=o;}});
   if(boss&&boss.alive){const bd=Math.hypot(boss.x-b.x,boss.y-b.y);
     if(bd<tgtDist*0.7||(bd<350&&Math.random()<0.3)){tgt={x:boss.x,y:boss.y,alive:true,r:boss.r};tgtDist=bd;}}
+  railDrones.forEach(d=>{if(!d.alive)return;const dd=Math.hypot(d.x-b.x,d.y-b.y);if(dd<tgtDist*1.15){tgt=d;tgtDist=dd;}});
   if(!tgt)return;
   const dx=tgt.x-b.x,dy=tgt.y-b.y,dist=Math.hypot(dx,dy),toTgt=Math.atan2(dy,dx);
   const hpR=b.hp/b.maxHp, retreating=hpR<b.retreatAt;
@@ -2776,8 +2875,9 @@ function sfDrawHudOverlay(){
   ctx.fillStyle='#4fd3ff';ctx.fillRect(18,H-52,150*sfView.boost,8);ctx.fillStyle='#ff9a35';ctx.fillRect(18,H-36,150*sfView.brake,8);
   ctx.fillStyle='#d9ecff';ctx.fillText(`BOOST ${boostPct}%`,176,H-45);ctx.fillText(`BRAKE ${brakePct}%`,176,H-29);
   ctx.textAlign='center';ctx.fillStyle='rgba(255,205,92,.75)';ctx.fillText('Z/R BARREL ROLL FEEL: DOUBLE-TAP A/D OR HOLD SHIFT',W/2,H-18);
-  const focus=sfFocus(), target=bots.find(b=>b!==focus&&b.alive);
-  if(target){const tp=sfProject(target.x,target.y,20);if(tp.visible){const r=sfClamp(34*tp.scale,18,54);ctx.strokeStyle='rgba(255,238,84,.98)';ctx.lineWidth=3;ctx.shadowColor='#ffee54';ctx.shadowBlur=18;ctx.strokeRect(tp.x-r,tp.y-r,r*2,r*2);ctx.beginPath();ctx.moveTo(tp.x-r-12,tp.y);ctx.lineTo(tp.x-r+6,tp.y);ctx.moveTo(tp.x+r-6,tp.y);ctx.lineTo(tp.x+r+12,tp.y);ctx.moveTo(tp.x,tp.y-r-12);ctx.lineTo(tp.x,tp.y-r+6);ctx.moveTo(tp.x,tp.y+r-6);ctx.lineTo(tp.x,tp.y+r+12);ctx.stroke();ctx.font='900 12px Orbitron,sans-serif';ctx.fillStyle='#ffee54';ctx.fillText('LOCK',tp.x,tp.y-r-18);ctx.shadowBlur=0;}}
+  const lock=reticleTarget(), target=lock&&lock.obj;
+  if(target){const tp=lock.pr||sfProject(target.x,target.y,20);if(tp.visible){const lockColor=lock.type==='drone'?'#39e8ff':'rgba(255,238,84,.98)';const r=sfClamp((lock.type==='boss'?46:34)*tp.scale,18,64);ctx.strokeStyle=lockColor;ctx.lineWidth=3;ctx.shadowColor=lockColor;ctx.shadowBlur=18;ctx.strokeRect(tp.x-r,tp.y-r,r*2,r*2);ctx.beginPath();ctx.moveTo(tp.x-r-12,tp.y);ctx.lineTo(tp.x-r+6,tp.y);ctx.moveTo(tp.x+r-6,tp.y);ctx.lineTo(tp.x+r+12,tp.y);ctx.moveTo(tp.x,tp.y-r-12);ctx.lineTo(tp.x,tp.y-r+6);ctx.moveTo(tp.x,tp.y+r-6);ctx.lineTo(tp.x,tp.y+r+12);ctx.stroke();ctx.font='900 12px Orbitron,sans-serif';ctx.fillStyle=lockColor;ctx.fillText(lock.type==='drone'?'TARGET':'LOCK',tp.x,tp.y-r-18);ctx.shadowBlur=0;}}
+  if(hitConfirmTimer>0){ctx.globalCompositeOperation='lighter';ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(W/2+sfView.crossX,H*.48+sfView.crossY,30+hitConfirmTimer*90,0,Math.PI*2);ctx.stroke();ctx.globalCompositeOperation='source-over';}
   ctx.restore();
 }
 
@@ -4247,6 +4347,9 @@ function setTouchButton(btn,on){
   if(name==='fire'&&on){mobileTouch.lastFire=performance.now();const r=document.getElementById('reticle');if(r){r.classList.remove('touch-fire-pulse');void r.offsetWidth;r.classList.add('touch-fire-pulse');}tactilePulse(10);snd(1200,.05,'square',.045);}
 }
 addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;mouse.dx=e.movementX||0;mouse.dy=e.movementY||0;mouse.active=true;});
+addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('.touch-btn,#touch-joystick,button,a,input'))return;manualFireDown=true;manualFire();});
+addEventListener('pointerup',()=>{manualFireDown=false;});
+addEventListener('pointercancel',()=>{manualFireDown=false;});
 addEventListener('keydown',e=>{keys[e.code]=true;
   if(e.code==='KeyF')freeCam=!freeCam;
   if(e.code==='KeyI'){mouseInvert=!mouseInvert;invertEl.checked=mouseInvert;localStorage.setItem('clawwarsMouseInvert',String(mouseInvert));}
@@ -4364,7 +4467,7 @@ function startFight(){
   genMap();initPickups();initBoss();
   bots=[makeBot(botConfigs[i],6*TILE,MH*TILE/2), makeBot(botConfigs[j],(MW-6)*TILE,MH*TILE/2)];
   bots[0].angle=0;bots[1].angle=Math.PI;
-  projs=[];parts=[];beams=[];dmgPopups=[];roundKills=[0,0];bossKills=[0,0];streaks=[0,0];gameTime=0;shake=0;specIdx=0;freeCam=false;mouse.x=W/2;mouse.y=H/2;
+  projs=[];parts=[];beams=[];railDrones=[];railWaveTimer=2.2;railWaveCount=0;dmgPopups=[];roundKills=[0,0];bossKills=[0,0];streaks=[0,0];gameTime=0;shake=0;specIdx=0;freeCam=false;mouse.x=W/2;mouse.y=H/2;
   slowMoTimer=0;slowMoScale=1;autoSpecTimer=0;lastKillTime=0;killFlashTimer=0;firstBlood=false;
   combos=[0,0];comboTimers=[0,0];maxCombos=[0,0];totalDmgDealt=[0,0];totalDmgTaken=[0,0];
   // Start countdown
@@ -4570,7 +4673,9 @@ function loop(t){
     return;
   }
   gameTime+=gameDt;
-  bots.forEach(b=>updateBot(b,gameDt)); updateBoss(gameDt); updateHazards(gameDt);
+  bots.forEach(b=>updateBot(b,gameDt)); updateBoss(gameDt); updateHazards(gameDt); updateRailDrones(gameDt);
+  if((manualFireDown||mobileTouch.fire||keys.Space)&&!mobileLandscapeBlocked)manualFire();
+  if(hitConfirmTimer>0)hitConfirmTimer=Math.max(0,hitConfirmTimer-gameDt);
   // Update combo timers
   for(let ci=0;ci<2;ci++){if(comboTimers[ci]>0){comboTimers[ci]-=gameDt;if(comboTimers[ci]<=0)combos[ci]=0;}}
   // Projectiles
@@ -4579,7 +4684,8 @@ function loop(t){
     let hit=false;if(solid(Math.floor(p.x/TILE),Math.floor(p.y/TILE))){hit=true;if(p.splash)explosion(p.x,p.y,p.splash,p.splashDmg,p.owner);}
     if(!hit){for(const b of bots){if(b===p.owner||!b.alive)continue;if(Math.hypot(b.x-p.x,b.y-p.y)<b.r+p.size){hit=true;
       if(p.splash)explosion(p.x,p.y,p.splash,p.splashDmg,p.owner);else{hurtBot(b,p.dmg,p.owner);spawnImpactFx(b.x,b.y,p.color||'#ffef86',false);sndHit();}break;}}}
-    if(!hit&&boss&&boss.alive&&!p.isBossBubble){if(Math.hypot(boss.x-p.x,boss.y-p.y)<boss.r+p.size){hit=true;
+    if(!hit&&!p.isDroneBolt){for(const d of railDrones){if(Math.hypot(d.x-p.x,d.y-p.y)<d.r+p.size){hit=true;if(p.splash)explosion(p.x,p.y,p.splash,p.splashDmg,p.owner);else hurtRailDrone(d,p.dmg,p.owner);break;}}}
+    if(!hit&&boss&&boss.alive&&!p.isBossBubble&&!p.isDroneBolt){if(Math.hypot(boss.x-p.x,boss.y-p.y)<boss.r+p.size){hit=true;
       if(p.splash)explosion(p.x,p.y,p.splash,p.splashDmg,p.owner);else{hurtBoss(p.dmg,p.owner);spawnImpactFx(boss.x,boss.y,'#ff8844',true);sndHit();}}}
     if(hit||p.life<=0)projs.splice(i,1);}
   // Particles
@@ -4592,7 +4698,7 @@ function loop(t){
   updateCamera(dt);
   // Render
   ctx.clearRect(0,0,W,H);drawMap();drawHazards();drawPickups();parts.forEach(p=>drawPart(p));beams.forEach(b=>drawBeam(b));
-  projs.forEach(p=>drawProj(p));[...bots].sort((a,b)=>a.y-b.y).forEach(b=>drawBot(b));drawBoss();drawDmgPopups(gameDt);sfDrawHudOverlay();
+  projs.forEach(p=>drawProj(p));railDrones.forEach(d=>drawRailDrone(d));[...bots].sort((a,b)=>a.y-b.y).forEach(b=>drawBot(b));drawBoss();drawDmgPopups(gameDt);sfDrawHudOverlay();
   drawKillFlash(gameDt);checkSpecialAnnouncements();
   // Slow-mo visual indicator
   if(slowMoTimer>0){ctx.globalAlpha=0.08;ctx.fillStyle='#ffffff';ctx.fillRect(0,0,W,H);ctx.globalAlpha=1;
@@ -4640,7 +4746,7 @@ function startDemo() {
   genMap(); initPickups(); initBoss();
   bots = [makeBot(botConfigs[idxs[0]], 6 * TILE, MH * TILE / 2), makeBot(botConfigs[idxs[1]], (MW - 6) * TILE, MH * TILE / 2)];
   bots[0].angle = 0; bots[1].angle = Math.PI;
-  projs = []; parts = []; beams = []; roundKills = [0, 0]; bossKills = [0, 0]; gameTime = 0; shake = 0; specIdx = 0; freeCam = false;
+  projs = []; parts = []; beams = []; railDrones = []; railWaveTimer = 2.2; railWaveCount = 0; roundKills = [0, 0]; bossKills = [0, 0]; gameTime = 0; shake = 0; specIdx = 0; freeCam = false;
   document.getElementById('viewer-count').style.display = 'block';
   lt = performance.now();
   requestAnimationFrame(demoLoop);
@@ -4652,7 +4758,7 @@ function demoLoop(t) {
   const dt = Math.min((t - lt) / 1000, 0.05); lt = t;
   if(mobileLandscapeBlocked)return;
   gameTime += dt;
-  bots.forEach(b => updateBot(b, dt)); updateBoss(dt); updateHazards(dt);
+  bots.forEach(b => updateBot(b, dt)); updateBoss(dt); updateHazards(dt); updateRailDrones(dt);
   // Simplified projectile/particle update (same as main loop)
   for (let i = projs.length - 1; i >= 0; i--) { const p = projs[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
     if (p.isRocket && Math.random() < 0.5) parts.push({ x: p.x + (Math.random() - 0.5) * 3, y: p.y + (Math.random() - 0.5) * 3, vx: (Math.random() - 0.5) * 25, vy: (Math.random() - 0.5) * 25, color: '#ff4400', size: 1.5 + Math.random(), life: 0.25, maxLife: 0.25, grav: 0, bounce: false });
@@ -4660,7 +4766,8 @@ function demoLoop(t) {
     if (solid(Math.floor(p.x / TILE), Math.floor(p.y / TILE))) { hit = true; if (p.splash) explosion(p.x, p.y, p.splash, p.splashDmg, p.owner); }
     if (!hit) { for (const b of bots) { if (b === p.owner || !b.alive) continue; if (Math.hypot(b.x - p.x, b.y - p.y) < b.r + p.size) { hit = true;
       if (p.splash) explosion(p.x, p.y, p.splash, p.splashDmg, p.owner); else { hurtBot(b, p.dmg, p.owner); spawnImpactFx(b.x,b.y,p.color||'#ffef86',false); } break; } } }
-    if (!hit && boss && boss.alive && !p.isBossBubble) { if (Math.hypot(boss.x - p.x, boss.y - p.y) < boss.r + p.size) { hit = true;
+    if (!hit && !p.isDroneBolt) { for (const d of railDrones) { if (Math.hypot(d.x - p.x, d.y - p.y) < d.r + p.size) { hit = true; if (p.splash) explosion(p.x, p.y, p.splash, p.splashDmg, p.owner); else hurtRailDrone(d,p.dmg,p.owner); break; } } }
+    if (!hit && boss && boss.alive && !p.isBossBubble && !p.isDroneBolt) { if (Math.hypot(boss.x - p.x, boss.y - p.y) < boss.r + p.size) { hit = true;
       if (p.splash) explosion(p.x, p.y, p.splash, p.splashDmg, p.owner); else { hurtBoss(p.dmg, p.owner); spawnImpactFx(boss.x,boss.y,'#ff8844',true); } } }
     if (hit || p.life <= 0) projs.splice(i, 1);
   }
@@ -4676,7 +4783,7 @@ function demoLoop(t) {
   cam.x = Math.max(0, Math.min(MW * TILE - W, cam.x)); cam.y = Math.max(0, Math.min(MH * TILE - H, cam.y));
   // Render
   ctx.clearRect(0, 0, W, H); drawMap(); drawHazards(); drawPickups(); parts.forEach(p => drawPart(p)); beams.forEach(b => drawBeam(b));
-  projs.forEach(p => drawProj(p)); [...bots].sort((a, b) => a.y - b.y).forEach(b => drawBot(b)); drawBoss(); drawDmgPopups(dt);
+  projs.forEach(p => drawProj(p)); railDrones.forEach(d=>drawRailDrone(d)); [...bots].sort((a, b) => a.y - b.y).forEach(b => drawBot(b)); drawBoss(); drawDmgPopups(dt);
   // Restart demo if round ends
   if (roundKills[0] >= 5 || roundKills[1] >= 5 || gameTime > 60) {
     const idxs = [...Array(botConfigs.length).keys()];
@@ -4685,7 +4792,7 @@ function demoLoop(t) {
     genMap(); initPickups(); initBoss();
     bots = [makeBot(botConfigs[idxs[0]], 6 * TILE, MH * TILE / 2), makeBot(botConfigs[idxs[1]], (MW - 6) * TILE, MH * TILE / 2)];
     bots[0].angle = 0; bots[1].angle = Math.PI;
-    projs = []; parts = []; beams = []; roundKills = [0, 0]; bossKills = [0, 0]; gameTime = 0;
+    projs = []; parts = []; beams = []; railDrones = []; railWaveTimer = 2.2; railWaveCount = 0; roundKills = [0, 0]; bossKills = [0, 0]; gameTime = 0;
   }
 }
 
