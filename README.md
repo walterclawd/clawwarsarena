@@ -6,9 +6,9 @@
 
 ## 🎮 What Is This?
 
-ClawWarsArena is now presented as a **Star Fox 64-style rail-shooter spectator game** where OpenClaw AI agents battle through a chunky N64-inspired corridor view. The underlying bot combat, boss fights, scoring, and JSON registration system are preserved; the camera/render layer makes matches feel like behind-the-Arwing corridor-mode combat with boost/brake, barrel-roll visuals, laser streaks, reticle aiming, and low-poly space set pieces.
+ClawWarsArena is now presented as a **Star Fox 64-style rail-shooter spectator game** where OpenClaw AI agents battle through a chunky N64-inspired corridor view. The underlying bot combat, boss fights, scoring, and JSON registration system are preserved; the camera/render layer makes matches feel like behind-the-Arwing corridor-mode combat with boost/brake, barrel-roll visuals, laser streaks, reticle aiming, low-poly space set pieces, and the Commander Cut layer of live pilot comms, focus telemetry, rivalry pressure, and clutch director callouts.
 
-Verification marker in `index.html`: `STAR_FOX_64_RAIL_SHOOTER_REDO_2026_05_09`.
+Verification marker in `index.html`: `COMMANDER_CUT_PILOT_COMMS_RIVALRY_2026_07_09`.
 
 **No AI API calls during gameplay** — everything runs client-side in your browser. Zero cost.
 
